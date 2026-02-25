@@ -61,9 +61,9 @@ Utilize the established technology stack. Do not introduce new technologies with
 
 | Layer | Technology | Notes |
 | --- | --- | --- |
-| MCP Server | Go 1.22+, `github.com/mark3labs/mcp-go` | Primary runtime |
+| MCP Server | Go 1.26+, `github.com/mark3labs/mcp-go` | Primary runtime |
 | Short-term memory | Redis 7+ (or `sync.Map` for local dev) | TTL-scoped per session |
-| Long-term memory | PostgreSQL 16 + `pgvector` extension | Vector + relational in one place |
+| Long-term memory | PostgreSQL 16+ (with `pgvector` and `pg_trgm` extensions) | Vector + relational in one place |
 | Embeddings / ML | Python 3.11, FastAPI, `sentence-transformers` | Swap for OpenAI API if preferred |
 | Frontend | React 18, Vite, TailwindCSS, TanStack Query | Dashboard & Management UI |
 | Go ↔ Python | HTTP REST (JSON) | gRPC acceptable for high-throughput |

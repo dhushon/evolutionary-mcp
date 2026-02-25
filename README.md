@@ -37,9 +37,9 @@ The system uses a powerful and flexible hybrid architecture that separates high-
 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
-| **MCP Server** | Go 1.22+ | Primary runtime for business logic and API |
+| **MCP Server** | Go 1.26+ | Primary runtime for business logic and API |
 | **Short-Term Memory** | Redis 7+ | Session-scoped context with a TTL |
-| **Long-Term Memory** | PostgreSQL 16 + `pgvector` | Persistent storage for memories, anchors, and feedback |
+| **Long-Term Memory** | PostgreSQL 16+ (with `pgvector` and `pg_trgm` extensions) | Persistent storage for memories, anchors, and feedback, with vector and fuzzy search capabilities. |
 | **Embeddings / ML** | Python 3.11, FastAPI, `sentence-transformers` | Vector generation and semantic similarity |
 | **Frontend** | React 18, Vite, TailwindCSS | Dashboard and management UI |
 | **Orchestration** | Docker Compose | Local development environment |
@@ -85,7 +85,7 @@ Follow these steps to set up your local development environment and run the appl
 ### Prerequisites
 
 - Docker and Docker Compose
-- Go (version 1.22 or later)
+- Go (version 1.26 or later)
 - Python (version 3.11 or later)
 - Node.js and npm
 

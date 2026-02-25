@@ -36,7 +36,7 @@
 ### Phase 5: Deployment (GCP)
 - [ ] **Infra**: Create Terraform for:
     - Cloud Run (Backend, ML Sidecar, Frontend).
-    - Cloud SQL (Postgres 16 + pgvector).
+    - Cloud SQL (Postgres 16+ with pgvector and pg_trgm).
     - Memorystore (Redis).
 - [ ] **CI/CD**: GitHub Actions to build and push images to Artifact Registry.
 
@@ -46,7 +46,7 @@
 
 ### `backend/` (Go)
 - **Responsibility**: The "Brain". Handles MCP requests, business logic, DB state, and coordinates ML tasks.
-- **Key Tech**: Go 1.22, `mcp-go`, `pgx`, `viper`.
+- **Key Tech**: Go 1.26, `mcp-go`, `pgx`, `viper`.
 
 ### `ml-sidecar/` (Python)
 - **Responsibility**: The "Subconscious". Handles heavy math, vector generation, and model fine-tuning.
