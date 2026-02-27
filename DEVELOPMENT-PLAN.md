@@ -1,6 +1,7 @@
 # Development Plan & Roadmap
 
 ## Project Goals
+
 1. **Evolutionary Memory**: A system that learns from feedback and evolves confidence over time.
 2. **Hybrid Architecture**: High-performance Go backend + Flexible Python ML sidecar.
 3. **Human-in-the-Loop**: A Vite SPA to visualize memory graphs, manage anchors, and provide manual feedback.
@@ -11,6 +12,7 @@
 ## Immediate TODOs
 
 ### Phase 1: Restructuring & Core Backend (Current)
+
 - [ ] **Refactor**: Move existing Go code to `backend/` directory.
 - [ ] **Refactor**: Move existing Python code to `ml-sidecar/` directory.
 - [ ] **Docker**: Update `docker-compose.yml` to point to new build contexts.
@@ -19,25 +21,29 @@
 - [ ] **Test**: Set up `testcontainers-go` for integration testing in `backend/`.
 
 ### Phase 2: ML Sidecar & Embeddings
+
 - [ ] **Python**: Finalize `embeddings.py` with `sentence-transformers`.
 - [ ] **Python**: Implement `trainer.py` for batch feedback processing.
 - [ ] **API**: Verify contract between Go and Python (JSON schemas).
 
 ### Phase 3: Frontend (Vite SPA)
+
 - [ ] **Init**: Initialize Vite project in `frontend/` (React + TS).
 - [ ] **UI**: Create "Anchor Manager" view (CRUD for context anchors).
 - [ ] **UI**: Create "Memory Inspector" view (Search memories, view confidence/versions).
 - [ ] **Integration**: Connect Frontend to Go Backend via REST/SSE.
 
 ### Phase 4: MCP Integration
+
 - [ ] **MCP**: Verify `remember`, `recall`, `give_feedback` tools with Claude Desktop.
 - [ ] **Context**: Ensure anchors are correctly injected into recall context.
 
 ### Phase 5: Deployment (GCP)
+
 - [ ] **Infra**: Create Terraform for:
-    - Cloud Run (Backend, ML Sidecar, Frontend).
-    - Cloud SQL (Postgres 16+ with pgvector and pg_trgm).
-    - Memorystore (Redis).
+  - Cloud Run (Backend, ML Sidecar, Frontend).
+  - Cloud SQL (Postgres 16+ with pgvector and pg_trgm).
+  - Memorystore (Redis).
 - [ ] **CI/CD**: GitHub Actions to build and push images to Artifact Registry.
 
 ---
@@ -45,14 +51,17 @@
 ## Folder Structure & Responsibilities
 
 ### `backend/` (Go)
+
 - **Responsibility**: The "Brain". Handles MCP requests, business logic, DB state, and coordinates ML tasks.
 - **Key Tech**: Go 1.26, `mcp-go`, `pgx`, `viper`.
 
 ### `ml-sidecar/` (Python)
+
 - **Responsibility**: The "Subconscious". Handles heavy math, vector generation, and model fine-tuning.
 - **Key Tech**: FastAPI, PyTorch, Sentence Transformers.
 
 ### `frontend/` (TypeScript)
+
 - **Responsibility**: The "Dashboard". Allows humans to audit the brain, adjust anchors, and correct memories manually.
 - **Key Tech**: Vite, React, Tailwind, TanStack Query.
 
@@ -92,7 +101,9 @@ graph TD
 ```
 
 ### Docker Development
+
 For local development, we use `docker-compose` to replicate the cloud environment:
+
 - `backend`: Port 8080
 - `ml-sidecar`: Port 8001
 - `frontend`: Port 3000
@@ -100,5 +111,6 @@ For local development, we use `docker-compose` to replicate the cloud environmen
 - `redis`: Port 6379
 
 ### Secrets Management
+
 - **Local**: `.env` file (gitignored).
 - **GCP**: Google Secret Manager injected as env vars into Cloud Run containers.

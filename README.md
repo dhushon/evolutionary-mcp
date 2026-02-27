@@ -108,14 +108,31 @@ At a minimum, ensure the `DATABASE_URL` and `REDIS_URL` point to the services th
 
 ### 3. Build and Run the Application
 
-The entire stack can be launched using Docker Compose. This will start the Go backend, the Python ML sidecar, a PostgreSQL database with `pgvector`, and a Redis instance.
+The easiest way to start the development environment is via the provided `Makefile`.
+
+```sh
+# bring up Postgres & Redis, then launch the Go backend locally
+make run
+```
+
+Under the hood `make run` spins up the `postgres` and `redis` containers and
+waits for the database to be ready before running `go run ./backend/cmd/server`.
+If Docker or the image pull fails you'll see a helpful error message and the
+Makefile will exit; in that case either fix your Docker installation or start
+Postgres/Redis manually and ensure the connection parameters in
+`config.yaml` or environment variables point to a running instance.
+
+Alternatively you can bring up the full compose stack (including frontend and
+ml-sidecar) with:
 
 ```sh
 docker-compose up --build -d
 ```
 
-- The Go backend will be available on port `8080`.
+- The Go backend will be available on port `8080` (or `8443` if TLS is
+  enabled).
 - The Python ML sidecar will be available on port `8001`.
+- The frontend runs on port `3000`.
 
 ### 4. Run the Frontend
 
@@ -134,3 +151,115 @@ The frontend dashboard will be available at `http://localhost:3000`.
 Once all services are running, you can connect your AI assistant (e.g., Claude Desktop) to the local MCP server. Configure the assistant to point to the memory server, typically by updating its local MCP settings to use the command for the running backend process.
 
 You can verify the connection by asking the assistant to use one of the memory tools, such as `list_anchors`.
+
+## 6. Authentication (Okta OAuth)
+
+The backend now supports user authentication via Okta. This protects the MCP endpoints and is used by the frontend login button.
+
+1. **Create an Okta Application**
+   - Go to your Okta dashboard and create a new Web application.
+   - Set the *Redirect URI* to `http://localhost:8080/auth/callback` (adjust port if you run the backend elsewhere).
+   - Note the *Client ID* and *Client Secret*.
+
+2. **Update Configuration**
+   - Add the Okta issuer URL and credentials to `config.yaml` (or environment variables). You can paste the full issuer string from your Okta authorization server (including `/oauth2/…` if you use a custom server); the backend will strip any trailing slash automatically.
+     ```yaml
+     auth:
+       # full issuer URL, e.g. "https://dev-123456.okta.com/oauth2/default"
+       okta_domain: "https://dev-123456.okta.com/oauth2/default"
+       client_id: "YOUR_CLIENT_ID"
+       # client_secret is optional when using PKCE (Swagger UI leaves it blank)
+       client_secret: "YOUR_CLIENT_SECRET"
+       redirect_url: "http://localhost:8080/auth/callback"
+     ```
+   - The backend will read and normalize these values on startup.
+
+3. **Using the Frontend**
+   - Navigate to the frontend UI (e.g. `http://localhost:3000`).
+   - Click the **Login with Okta** button. You will be redirected to Okta to sign in.
+   - After successful authentication you’ll be returned to the dashboard with a session cookie set.
+   - Use the **Logout** button to clear the session.
+
+4. **Swagger / OpenAPI Docs**
+   - A Swagger UI is available at `http://localhost:8080/docs`.
+   - The UI loads the OpenAPI spec from `/openapi.yaml` and includes an **Authorize** button.
+   - The client ID is injected automatically and the client ID field is hidden; the client secret field is shown but marked “optional – PKCE is used, leave blank”. Users don’t need to type in credentials.
+   - Click **Authorize**, then the page will immediately redirect you to Okta for login and return to the docs with a token.
+   - After authorizing, all requests made from the UI will include the access token.
+   - A read‑only text box above the Swagger UI will also show the raw Bearer token; you can copy/paste it to share with other users or for manual API calls.
+   - Ensure your Okta application’s allowed redirect URLs include
+     `http://localhost:8080/docs/oauth2-redirect.html`.
+
+5. **API Access**
+   - Any requests to `/mcp/*` paths require an authenticated user. Unauthenticated requests will be redirected to `/login`.
+   - You can test by hitting `http://localhost:8080/api/v1/health` with credentials included; a 200 response indicates a valid session.
+
+## 7. TLS Support
+
+The backend can run with HTTPS on port 8443 using certificates provided in the
+configuration. This is especially useful when embedding the service into a
+secure environment or using the Swagger UI’s OAuth flow over TLS.
+
+### Enable TLS
+
+1. Set the `tls.enable` field to `true` and provide paths for
+   `cert_file` and `key_file` in `config.yaml` or via environment variables.
+   You can also supply an array of `hostnames` which will be used when
+generating a self-signed certificate automatically.
+
+2. When `tls.enable` is true and the certificate/key files are missing,
+   the server will attempt to generate a self-signed certificate using the
+   `internal/tls` helper. By default it will write to the provided paths and
+   include any hostnames you list (e.g. `localhost`, `127.0.0.1`).
+
+3. The server will start on `https://localhost:8443`.  If you prefer to use
+   a custom port, set `Server.Addr` accordingly in the code or extend the
+   configuration.
+
+### Generating Self‑Signed Certs Manually
+
+You can also generate a certificate ahead of time using the library in a small
+Go program or a CLI tool. Example:
+
+```go
+package main
+
+import (
+    "log"
+    "evolutionary-mcp/backend/internal/tls"
+)
+
+func main() {
+    // include whichever hostnames you will use when accessing the service
+    if err := tls.GenerateSelfSignedCert("server.crt", "server.key", []string{"localhost", "127.0.0.1", "vdatacloud.com"}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Build and run this program once; the files will be created in the current
+working directory.
+
+> **Tip:** if you own a real domain such as `vdatacloud.com`, point it at
+> `127.0.0.1` (for example by adding a `/etc/hosts` entry) so that browsers and
+tools resolve it locally but still present the same hostname to the TLS
+certificate.  You can then hit `https://vdatacloud.com:8443` in your browser
+and the certificate will already contain that name.
+
+Alternatively, you can use [`mkcert`](https://github.com/FiloSottile/mkcert)
+since it automates trust for development but the built‑in helper avoids any
+external dependencies.
+
+### Notes
+
+- The Swagger UI and login callbacks will also operate over HTTPS when TLS is
+  enabled.
+- Be aware that browsers will warn about self-signed certificates; add an
+  exception for development or install the cert into your trust store if
+  desired.
+
+> **Production tip:** since `vdatacloudai.com` is registered through Cloudflare,
+> you can leverage Cloudflare’s TLS/Edge certificates, CDN, and security
+> features when you flip the site to public.  Cloudflare will handle valid
+> certificates on your behalf and can also proxy requests back to your
+> containerized backend running on Cloud Run or elsewhere.

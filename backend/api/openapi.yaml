@@ -1,0 +1,865 @@
+openapi: 3.0.3
+info:
+  title: VDataCloud API
+  description: |
+    Evolutionary Memory Service API for VDataCloud providing vendor/payer directory
+    with fuzzy matching, location-based search, and vector similarity.
+    
+    **Performance Targets:**
+    - Cache hit: <5ms
+    - Cache miss (database): <50ms
+    - Query parsing: <1ms
+    
+    **Architecture:**
+    - High-performance, cache-first design
+    - Postgres full-text search with pg_trgm
+    - Vector embeddings for semantic search
+    - Comprehensive observability
+  version: 1.0.0
+  contact:
+    name: VDataCloud Team
+    email: support@vdatacloudai.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://localhost:8444/api/v1
+    description: Local development (HTTPS)
+  - url: http://localhost:8444/api/v1
+    description: Local development (HTTP)
+  - url: https://api.vdatacloudai.com/api/v1
+    description: Production
+
+components:
+  securitySchemes:
+    oktaOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: "{oktaIssuer}/v1/authorize"
+          tokenUrl: "{oktaIssuer}/v1/token"
+          scopes:
+            openid: "openid scope"
+            profile: "profile scope"
+            email: "email scope"
+          x-okta-issuer: "{oktaIssuer}"
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+          example: "evolutionary-mcp"
+        version:
+          type: string
+          example: "1.0.0"
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          nullable: true
+
+security:
+  - oktaOAuth: [openid, profile, email]
+
+tags:
+  - name: payers
+    description: Payer management and search operations
+  - name: vendors
+    description: Vendor directory operations
+  - name: relationships
+    description: Payer-vendor relationship management
+  - name: health
+    description: Service health and readiness checks
+
+paths:
+  # ============================================================================
+  # Health Endpoints
+  # ============================================================================
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Returns overall service health status
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Readiness check
+      description: Returns whether service is ready to accept requests
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Service is ready
+        '503':
+          description: Service is not ready
+
+  /health/live:
+    get:
+      tags: [health]
+      summary: Liveness check
+      description: Returns whether service is alive
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Service is alive
+        '503':
+          description: Service is not alive
+
+  # ============================================================================
+  # Payer Operations
+  # ============================================================================
+  /payers/search:
+    get:
+      tags: [payers]
+      summary: Search payers
+      description: |
+        Search for payers using multiple strategies:
+        - **Fuzzy text matching** using trigrams (pg_trgm)
+        - **Vector similarity** for semantic search
+        - **Location-based** filtering by state/city
+        - **Full-text search** across descriptions
+        
+        Results are cached for 5 minutes (configurable).
+      operationId: searchPayers
+      parameters:
+        - name: q
+          in: query
+          description: Search query (name, description, or semantic query)
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 500
+          example: "Blue Cross Blue Shield"
+        
+        - name: state
+          in: query
+          description: Filter by US state (2-letter abbreviation)
+          schema:
+            type: string
+            pattern: '^[A-Z]{2}$'
+          example: "CA"
+        
+        - name: city
+          in: query
+          description: Filter by city name
+          schema:
+            type: string
+            maxLength: 100
+          example: "San Francisco"
+        
+        - name: payer_type
+          in: query
+          description: Filter by payer type
+          schema:
+            type: string
+            enum: [insurance, medicare, medicaid, commercial, government, self_pay, other]
+          example: "commercial"
+        
+        - name: status
+          in: query
+          description: Filter by payer status
+          schema:
+            type: string
+            enum: [active, inactive, pending, suspended]
+            default: active
+          example: "active"
+        
+        - name: search_type
+          in: query
+          description: Search strategy to use
+          schema:
+            type: string
+            enum: [fuzzy, vector, hybrid, fulltext]
+            default: hybrid
+          example: "hybrid"
+        
+        - name: similarity_threshold
+          in: query
+          description: Minimum similarity score (0.0-1.0) for results
+          schema:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+            default: 0.3
+          example: 0.5
+        
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        
+        - name: offset
+          in: query
+          description: Number of results to skip (for pagination)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+
+      responses:
+        '200':
+          description: Search results
+          headers:
+            X-Cache-Status:
+              description: Cache hit/miss indicator
+              schema:
+                type: string
+                enum: [HIT, MISS]
+            X-Query-Time-Ms:
+              description: Query execution time in milliseconds
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayerSearchResponse'
+        
+        '400':
+          description: Bad request (invalid parameters)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /payers/{id}:
+    get:
+      tags: [payers]
+      summary: Get payer by ID
+      description: Retrieve a single payer by UUID
+      operationId: getPayerById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Payer UUID
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      
+      responses:
+        '200':
+          description: Payer found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payer'
+        
+        '404':
+          description: Payer not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /payers:
+    get:
+      tags: [payers]
+      summary: List all payers
+      description: Retrieve paginated list of all payers
+      operationId: listPayers
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, pending, suspended]
+            default: active
+      
+      responses:
+        '200':
+          description: List of payers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayerListResponse'
+
+    post:
+      tags: [payers]
+      summary: Create a new payer
+      description: Add a new payer to the directory
+      operationId: createPayer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayerCreateRequest'
+      
+      responses:
+        '201':
+          description: Payer created successfully
+          headers:
+            Location:
+              description: URL of the created payer
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payer'
+        
+        '400':
+          description: Invalid request body
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        
+        '409':
+          description: Payer already exists (duplicate payer_id)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  # ============================================================================
+  # Vendor Operations
+  # ============================================================================
+  /vendors/search:
+    get:
+      tags: [vendors]
+      summary: Search vendors
+      description: Search for vendors using fuzzy matching and vector similarity
+      operationId: searchVendors
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      
+      responses:
+        '200':
+          description: Vendor search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorSearchResponse'
+
+  /vendors/{id}:
+    get:
+      tags: [vendors]
+      summary: Get vendor by ID
+      operationId: getVendorById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      
+      responses:
+        '200':
+          description: Vendor found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vendor'
+        '404':
+          description: Vendor not found
+
+  # ============================================================================
+  # Relationship Operations
+  # ============================================================================
+  /relationships:
+    get:
+      tags: [relationships]
+      summary: Get payer-vendor relationships
+      description: Retrieve relationships between payers and vendors
+      operationId: getRelationships
+      parameters:
+        - name: payer_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: vendor_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      
+      responses:
+        '200':
+          description: List of relationships
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  relationships:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PayerVendorRelationship'
+    # Also include common schema definitions here
+    Payer:
+      type: object
+      required:
+        - id
+        - name
+        - payer_id
+        - payer_type
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        
+        name:
+          type: string
+          maxLength: 500
+          description: Official payer name
+          example: "Blue Cross Blue Shield of California"
+        
+        display_name:
+          type: string
+          maxLength: 500
+          description: Display-friendly name
+          example: "BCBS California"
+        
+        payer_id:
+          type: string
+          maxLength: 100
+          description: External identifier (NPI, TIN, etc.)
+          example: "BCBS-CA-001"
+        
+        payer_type:
+          type: string
+          enum: [insurance, medicare, medicaid, commercial, government, self_pay, other]
+          description: Type of payer organization
+          example: "commercial"
+        
+        status:
+          type: string
+          enum: [active, inactive, pending, suspended]
+          description: Current operational status
+          example: "active"
+        
+        contact:
+          $ref: '#/components/schemas/ContactInfo'
+        
+        address:
+          $ref: '#/components/schemas/Address'
+        
+        geolocation:
+          $ref: '#/components/schemas/GeoLocation'
+        
+        description:
+          type: string
+          description: Additional information about the payer
+        
+        tags:
+          type: array
+          items:
+            type: string
+          description: Categorization tags
+          example: ["california", "hmo", "ppo"]
+        
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional metadata
+        
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    PayerCreateRequest:
+      type: object
+      required:
+        - name
+        - payer_id
+        - payer_type
+      properties:
+        name:
+          type: string
+          maxLength: 500
+        display_name:
+          type: string
+          maxLength: 500
+        payer_id:
+          type: string
+          maxLength: 100
+        payer_type:
+          type: string
+          enum: [insurance, medicare, medicaid, commercial, government, self_pay, other]
+        contact:
+          $ref: '#/components/schemas/ContactInfo'
+        address:
+          $ref: '#/components/schemas/Address'
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    ContactInfo:
+      type: object
+      properties:
+        website:
+          type: string
+          format: uri
+          maxLength: 500
+          example: "https://www.bcbs.com"
+        phone:
+          type: string
+          maxLength: 50
+          example: "+1-800-555-0123"
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: "contact@bcbs.com"
+        fax:
+          type: string
+          maxLength: 50
+
+    Address:
+      type: object
+      properties:
+        line1:
+          type: string
+          maxLength: 255
+          example: "123 Main Street"
+        line2:
+          type: string
+          maxLength: 255
+          example: "Suite 100"
+        city:
+          type: string
+          maxLength: 100
+          example: "San Francisco"
+        state:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          example: "CA"
+        zip_code:
+          type: string
+          maxLength: 10
+          example: "94105"
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          default: "US"
+          example: "US"
+
+    GeoLocation:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          example: 37.7749
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          example: -122.4194
+
+    Vendor:
+      type: object
+      required:
+        - id
+        - name
+        - vendor_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 500
+        vendor_id:
+          type: string
+          maxLength: 100
+        contact:
+          $ref: '#/components/schemas/ContactInfo'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PayerVendorRelationship:
+      type: object
+      required:
+        - id
+        - payer_id
+        - vendor_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        payer_id:
+          type: string
+          format: uuid
+        vendor_id:
+          type: string
+          format: uuid
+        relationship_type:
+          type: string
+          example: "contracted"
+        contract_start_date:
+          type: string
+          format: date
+        contract_end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+
+    # ------------------------------------------------------------------------
+    # Response Models
+    # ------------------------------------------------------------------------
+    PayerSearchResponse:
+      type: object
+      required:
+        - results
+        - total
+        - limit
+        - offset
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayerSearchResult'
+          description: Array of matching payers
+        
+        total:
+          type: integer
+          description: Total number of matching results
+          example: 42
+        
+        limit:
+          type: integer
+          description: Maximum results per page
+          example: 20
+        
+        offset:
+          type: integer
+          description: Current offset
+          example: 0
+        
+        query_info:
+          type: object
+          properties:
+            query:
+              type: string
+              description: Original search query
+            search_type:
+              type: string
+              description: Search strategy used
+            execution_time_ms:
+              type: integer
+              description: Query execution time in milliseconds
+            cache_hit:
+              type: boolean
+              description: Whether result came from cache
+
+    PayerSearchResult:
+      allOf:
+        - $ref: '#/components/schemas/Payer'
+        - type: object
+          properties:
+            similarity_score:
+              type: number
+              format: float
+              description: Relevance score (0.0-1.0)
+              example: 0.87
+            match_type:
+              type: string
+              enum: [exact, fuzzy, vector, fulltext]
+              description: How the match was found
+              example: "fuzzy"
+
+    PayerListResponse:
+      type: object
+      properties:
+        payers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payer'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    VendorSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Vendor'
+              - type: object
+                properties:
+                  similarity_score:
+                    type: number
+                    format: float
+        total:
+          type: integer
+
+    # ------------------------------------------------------------------------
+    # Health & Error Models
+    # ------------------------------------------------------------------------
+    HealthStatus:
+      type: object
+      required:
+        - status
+        - service
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, degraded]
+          example: "healthy"
+        service:
+          type: string
+          example: "payer-service"
+        version:
+          type: string
+          example: "1.0.0"
+        timestamp:
+          type: string
+          format: date-time
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [ok, error]
+            cache:
+              type: string
+              enum: [ok, error]
+          example:
+            database: "ok"
+            cache: "ok"
+
+    ProblemDetails:
+      type: object
+      description: RFC 7807 Problem Details for HTTP APIs
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI reference identifying the problem type
+          example: "about:blank"
+        title:
+          type: string
+          description: Short, human-readable summary
+          example: "Bad Request"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation
+          example: "The 'q' parameter is required"
+        instance:
+          type: string
+          format: uri
+          description: URI reference identifying the specific occurrence
+        trace_id:
+          type: string
+          description: Distributed trace ID for debugging
+          example: "abc123def456"
+

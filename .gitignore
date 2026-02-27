@@ -1,0 +1,28 @@
+.java-version
+.DS_Store
+
+# ignore local configuration with secrets
+config.yaml
+backend/config.yaml
+
+# ignore docker-compose override
+docker-compose.yml
+
+# ignore build artifacts and binaries
+/bin/
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+
+# ignore temporary or backup files
+*.backup
+*.corrupted
+*~
+
+# ignore symlinked directories (these are created locally)
+platform-commons/
+payer-service/
+
