@@ -5,6 +5,7 @@
 This project is an **Evolutionary Memory MCP (Model Context Protocol) server**. Your primary goal is to assist in its development by providing and maintaining capabilities for short-term and long-term memory, feedback-driven learning, and context anchoring for AI assistants.
 
 The architecture is a **Go/Python hybrid**. Adhere to this separation of concerns:
+
 - **Go**: Handle the MCP server, API routing, short-term memory (Redis), and long-term storage CRUD (Postgres).
 - **Python**: Handle all ML inference, including embeddings, semantic similarity, and feedback-driven model adaptation.
 
@@ -14,7 +15,7 @@ The architecture is a **Go/Python hybrid**. Adhere to this separation of concern
 
 Familiarize yourself with and strictly follow this repository structure. When adding new files, place them in the appropriate directory.
 
-```
+```text
 mcp-memory/
 ├── cmd/
 │   └── server/
