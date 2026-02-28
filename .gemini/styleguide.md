@@ -151,6 +151,25 @@ You must adhere to these core principles at all times:
 
 ---
 
+## Authentication Architecture
+
+The system uses **Okta OIDC** with a dual-client strategy to secure both the backend API and the frontend/Swagger UI.
+
+1.  **Backend (Confidential Client)**:
+    -   **Type**: Web Application.
+    -   **Credentials**: Client ID + Client Secret.
+    -   **Usage**: Server-side token validation, machine-to-machine communication, and traditional web flows.
+
+2.  **Frontend / Swagger UI (Public Client)**:
+    -   **Type**: Single Page Application (SPA).
+    -   **Credentials**: Client ID only (No Secret).
+    -   **Usage**: Browser-based authentication using **PKCE** (Proof Key for Code Exchange).
+    -   **Configuration**: The backend injects the SPA Client ID into the Swagger UI at runtime via `auth.swagger_client_id`.
+
+**Note**: Do not attempt to use the Backend Client ID for browser flows, as Okta will reject the request due to the missing client secret.
+
+---
+
 ## Coding Conventions
 
 ### Go

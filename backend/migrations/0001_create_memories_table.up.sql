@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE memories (
     id UUID PRIMARY KEY,
     content TEXT NOT NULL,

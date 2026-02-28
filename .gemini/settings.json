@@ -1,0 +1,11 @@
+{
+  "security": {
+    "auth": {
+      "selectedType": "vertex_ai",
+      "vertex_ai": {
+        "projectId": "vertex-439210",
+        "location": "us-east4"
+      }
+    }
+  }
+}

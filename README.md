@@ -154,22 +154,27 @@ You can verify the connection by asking the assistant to use one of the memory t
 
 ## 6. Authentication (Okta OAuth)
 
-The backend now supports user authentication via Okta. This protects the MCP endpoints and is used by the frontend login button.
+The backend supports user authentication via Okta using a dual-client architecture to support both server-side and browser-based flows securely.
 
-1. **Create an Okta Application**
-   - Go to your Okta dashboard and create a new Web application.
-   - Set the *Redirect URI* to `http://localhost:8080/auth/callback` (adjust port if you run the backend elsewhere).
-   - Note the *Client ID* and *Client Secret*.
+1. **Create Okta Applications**
+   - **Backend App**: Create a "Web Application".
+     - *Redirect URI*: `http://localhost:8080/auth/callback`
+     - Note the *Client ID* and *Client Secret*.
+   - **Frontend App**: Create a "Single Page App (SPA)".
+     - *Redirect URI*: `http://localhost:8080/docs/oauth2-redirect.html`
+     - Enable **PKCE**.
+     - Note the *Client ID* (no secret required).
 
 2. **Update Configuration**
-   - Add the Okta issuer URL and credentials to `config.yaml` (or environment variables). You can paste the full issuer string from your Okta authorization server (including `/oauth2/…` if you use a custom server); the backend will strip any trailing slash automatically.
+   - Add the Okta issuer URL and credentials to `config.yaml`.
      ```yaml
      auth:
        # full issuer URL, e.g. "https://dev-123456.okta.com/oauth2/default"
        okta_domain: "https://dev-123456.okta.com/oauth2/default"
-       client_id: "YOUR_CLIENT_ID"
-       # client_secret is optional when using PKCE (Swagger UI leaves it blank)
-       client_secret: "YOUR_CLIENT_SECRET"
+       client_id: "BACKEND_WEB_APP_CLIENT_ID"
+       client_secret: "BACKEND_WEB_APP_CLIENT_SECRET"
+       # New field for Swagger/SPA:
+       swagger_client_id: "FRONTEND_SPA_CLIENT_ID"
        redirect_url: "http://localhost:8080/auth/callback"
      ```
    - The backend will read and normalize these values on startup.
@@ -183,8 +188,8 @@ The backend now supports user authentication via Okta. This protects the MCP end
 4. **Swagger / OpenAPI Docs**
    - A Swagger UI is available at `http://localhost:8080/docs`.
    - The UI loads the OpenAPI spec from `/openapi.yaml` and includes an **Authorize** button.
-   - The client ID is injected automatically and the client ID field is hidden; the client secret field is shown but marked “optional – PKCE is used, leave blank”. Users don’t need to type in credentials.
-   - Click **Authorize**, then the page will immediately redirect you to Okta for login and return to the docs with a token.
+   - The **Swagger Client ID** is injected automatically. It uses PKCE, so no client secret is required or sent.
+   - Click **Authorize** to redirect to Okta for login.
    - After authorizing, all requests made from the UI will include the access token.
    - A read‑only text box above the Swagger UI will also show the raw Bearer token; you can copy/paste it to share with other users or for manual API calls.
    - Ensure your Okta application’s allowed redirect URLs include

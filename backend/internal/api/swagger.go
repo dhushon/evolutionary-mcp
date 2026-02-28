@@ -1,10 +1,15 @@
 package api
 
 import (
-    "net/http"
-    "os"
-    "strings"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
+	"evolutionary-mcp/backend/internal/auth"
 )
+
+//go:generate oapi-codegen -generate server,types -o api.gen.go -package api ../../api/openapi.yaml
 
 // swaggerHandler serves a simple Swagger UI page that points at the
 // generated OpenAPI spec. The page uses the official CDN-hosted assets so we
@@ -15,47 +20,51 @@ import (
 // replaced. The file on disk still contains {oktaIssuer} so clients don't have
 // to know the actual tenant or issuer URL; we substitute it here before returning.
 func SpecHandler(oktaIssuer string) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        data, err := os.ReadFile("api/openapi.yaml")
-        if err != nil {
-            http.Error(w, "failed to load spec", http.StatusInternalServerError)
-            return
-        }
-        spec := strings.ReplaceAll(string(data), "{oktaIssuer}", oktaIssuer)
-        w.Header().Set("Content-Type", "application/yaml")
-        w.Write([]byte(spec))
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("api/openapi.yaml")
+		if err != nil {
+			http.Error(w, "failed to load spec", http.StatusInternalServerError)
+			return
+		}
+		spec := strings.ReplaceAll(string(data), "{oktaIssuer}", oktaIssuer)
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Write([]byte(spec))
+	}
 }
 
 // SwaggerHandler returns an HTTP handler that serves the Swagger UI.
-func SwaggerHandler(oktaDomain, clientID string) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        specURL := "/openapi.yaml"
-        oauth2Redirect := r.URL.Scheme + "://" + r.Host + "/docs/oauth2-redirect.html"
-        // r.URL.Scheme may be empty (Go's request only populates it when
-        // behind proxy), so derive from header if necessary
-        if oauth2Redirect == "://"+r.Host+"/docs/oauth2-redirect.html" {
-            scheme := "http"
-            if r.TLS != nil {
-                scheme = "https"
-            }
-            oauth2Redirect = scheme + "://" + r.Host + "/docs/oauth2-redirect.html"
-        }
+func SwaggerHandler(oktaDomain, swaggerClientID string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		specURL := "/openapi.yaml"
 
-        html := strings.ReplaceAll(swaggerHTML, "${SPEC_URL}", specURL)
-        html = strings.ReplaceAll(html, "${OAUTH2_REDIRECT}", oauth2Redirect)
-        // OKTA_DOMAIN is really the issuer base URL; pass as-is
-        html = strings.ReplaceAll(html, "${OKTA_DOMAIN}", oktaDomain)
-        html = strings.ReplaceAll(html, "${CLIENT_ID}", clientID)
-        w.Header().Set("Content-Type", "text/html")
-        w.Write([]byte(html))
-    }
+		// Determine scheme
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+
+		// Construct absolute URL to ensure exact match with Okta config
+		oauth2RedirectURL := fmt.Sprintf("%s://%s/docs/oauth2-redirect.html", scheme, r.Host)
+
+		html := strings.ReplaceAll(swaggerHTML, "${SPEC_URL}", specURL)
+		html = strings.ReplaceAll(html, "${OAUTH2_REDIRECT_URL}", oauth2RedirectURL)
+		// OKTA_DOMAIN is really the issuer base URL; pass as-is
+		html = strings.ReplaceAll(html, "${OKTA_DOMAIN}", oktaDomain)
+		html = strings.ReplaceAll(html, "${CLIENT_ID}", swaggerClientID)
+		html = strings.ReplaceAll(html, "${SCOPES}", strings.Join(auth.AllScopes, " "))
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(html))
+	}
 }
 
-// OAuthRedirectHandler serves the OAuth2 redirect page used by Swagger UI
-func OAuthRedirectHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "text/html")
-    w.Write([]byte(oauthRedirectHTML))
+// OAuth2RedirectHandler serves the static HTML file required by Swagger UI's
+// OAuth2 flow. This file receives the token/code from the provider and sends
+// it back to the main Swagger UI window.
+func OAuth2RedirectHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(oauth2RedirectHTML))
+	}
 }
 
 const swaggerHTML = `<!DOCTYPE html>
@@ -63,93 +72,122 @@ const swaggerHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <title>Swagger UI</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+  <style>
+    html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+    /* Hide the top bar introduced by StandaloneLayout */
+    .topbar { display: none !important; }
+  </style>
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js"></script>
   <script>
   window.onload = function() {
     const ui = SwaggerUIBundle({
       url: "${SPEC_URL}",
       dom_id: '#swagger-ui',
-      presets: [SwaggerUIBundle.presets.apis],
-      layout: "BaseLayout",
-      oauth2RedirectUrl: "${OAUTH2_REDIRECT}",
-      // you can also set clientId here but we'll init explicitly below
+      presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIStandalonePreset
+      ],
+      layout: "StandaloneLayout",
+      oauth2RedirectUrl: "${OAUTH2_REDIRECT_URL}",
     });
     window.ui = ui;
 
-    // initialize OAuth settings with client id (no secret)
+    const clientId = "${CLIENT_ID}";
+    console.log("Swagger OAuth configured with Client ID:", clientId);
     ui.initOAuth({
-      clientId: "${CLIENT_ID}",
+      clientId: clientId,
       usePkceWithAuthorizationCodeGrant: true,
-      // leaving clientSecret unset since PKCE is used
+      useBasicAuthenticationWithAccessCodeGrant: false,
+      scopes: "${SCOPES}"
     });
-
-    // hide only the client_id field; secret remains visible but we mark it optional
-    const style = document.createElement('style');
-    style.textContent =
-      "/* Swagger UI modal uses .dialog-ux class for the form */\n" +
-      " .dialog-ux input[name=\"client_id\"],\n" +
-      " .dialog-ux label[for=\"client_id\"] {\n" +
-      "     display: none !important;\n" +
-      " }\n";
-    document.head.appendChild(style);
-
-    // once the modal appears, prefill client_id and annotate the secret field
-    const observer = new MutationObserver(() => {
-      const cidInput = document.querySelector('.dialog-ux input[name="client_id"]');
-      if (cidInput) {
-        cidInput.value = "${CLIENT_ID}";
-      }
-      const secretInput = document.querySelector('.dialog-ux input[name="client_secret"]');
-      if (secretInput) {
-        secretInput.placeholder = "optional – PKCE is used, leave blank";
-        secretInput.disabled = true;
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    tokenBox.placeholder = 'Bearer token will appear here after authorization';
-    const container = document.createElement('div');
-    container.style.margin = '10px 0';
-    container.appendChild(tokenBox);
-    document.body.insertBefore(container, document.getElementById('swagger-ui'));
-
-    // poll for token after auth (Swagger UI stores it internally)
-    function updateToken() {
-      try {
-        const at = ui.authActions && ui.authActions.getAccessToken && ui.authActions.getAccessToken();
-        if (at && Object.keys(at).length) {
-          // pick first token value
-          const val = Object.values(at)[0];
-          if (val) {
-            tokenBox.value = val;
-          }
-        }
-      } catch (e) {
-        // ignore until ui is ready
-      }
-    }
-    // run periodically for a short while
-    const interval = setInterval(() => {
-      updateToken();
-    }, 1000);
-    setTimeout(() => clearInterval(interval), 60000);
   }
   </script>
 </body>
 </html>`
 
-const oauthRedirectHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"/><title>OAuth2 Redirect</title></head>
+const oauth2RedirectHTML = `<!doctype html>
+<html lang="en-US">
+<head>
+    <title>Swagger UI: OAuth2 Redirect</title>
+</head>
 <body>
 <script>
-if (window.opener && window.opener.swaggerUIRedirectCallback) {
-  window.opener.swaggerUIRedirectCallback(window.location.href);
-}
+    'use strict';
+    function run () {
+        var oauth2 = window.opener.swaggerUIRedirectOauth2;
+        var sentState = oauth2.state;
+        var redirectUrl = oauth2.redirectUrl;
+        var isValid, qp, arr;
+
+        if (/code|token|error/.test(window.location.hash)) {
+            qp = window.location.hash.substring(1).replace('?', '&');
+        } else {
+            qp = location.search.substring(1);
+        }
+
+        arr = qp.split("&");
+        arr.forEach(function (v,i,_arr) { _arr[i] = '"' + v.replace('=', '":"') + '"';});
+        qp = qp ? JSON.parse('{' + arr.join() + '}',
+                function (key, value) {
+                    return key === "" ? value : decodeURIComponent(value)
+                }
+        ) : {};
+
+        isValid = qp.state === sentState;
+
+        if ((
+          oauth2.auth.schema.get("flow") === "accessCode" ||
+          oauth2.auth.schema.get("flow") === "authorizationCode" ||
+          oauth2.auth.schema.get("flow") === "authorization_code"
+        ) && !oauth2.auth.code) {
+            if (!isValid) {
+                oauth2.errCb({
+                    authId: oauth2.auth.name,
+                    source: "auth",
+                    level: "warning",
+                    message: "Authorization may be unsafe, passed state was changed in server. The passed state wasn't returned from auth server."
+                });
+            }
+
+            if (qp.code) {
+                delete oauth2.state;
+                oauth2.auth.code = qp.code;
+                oauth2.callback({auth: oauth2.auth, redirectUrl: redirectUrl});
+            } else {
+                let oauthErrorMsg;
+                if (qp.error) {
+                    oauthErrorMsg = "["+qp.error+"]: " +
+                        (qp.error_description ? qp.error_description+ ". " : "no accessCode received from the server. ") +
+                        (qp.error_uri ? "More info: "+qp.error_uri : "");
+                }
+
+                oauth2.errCb({
+                    authId: oauth2.auth.name,
+                    source: "auth",
+                    level: "error",
+                    message: oauthErrorMsg || "[Authorization failed]: no accessCode received from the server."
+                });
+            }
+        } else {
+            oauth2.callback({auth: oauth2.auth, token: qp, isValid: isValid, redirectUrl: redirectUrl});
+        }
+        window.close();
+    }
+
+    if (document.readyState !== 'loading') {
+        run();
+    } else {
+        document.addEventListener('DOMContentLoaded', function () {
+            run();
+        });
+    }
 </script>
 </body>
 </html>`

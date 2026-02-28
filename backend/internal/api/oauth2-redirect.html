@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Swagger UI: OAuth2 Redirect</title>
+</head>
+<body>
+<script>
+    'use strict';
+    function run() {
+        var oauth2 = window.opener.swaggerUIRedirectOauth2;
+        var sentState = oauth2.state;
+        var redirectUrl = oauth2.redirectUrl;
+        var isValid, qp, arr;
+
+        qp = window.location.search.substring(1).split('&');
+
+        arr = qp.reduce(function (prev, curr) {
+            var parts = curr.split('=');
+            prev[parts[0]] = parts[1];
+            return prev;
+        }, {});
+
+        isValid = arr.state === sentState;
+
+        if (isValid) {
+            oauth2.auth.code = arr.code;
+            oauth2.callback({auth: oauth2.auth, redirectUrl: redirectUrl});
+        }
+        window.close();
+    }
+
+    run();
+</script>
+</body>
+</html>

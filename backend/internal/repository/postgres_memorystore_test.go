@@ -16,7 +16,7 @@ func TestPostgresMemoryStore(t *testing.T) {
 	ctx := context.Background()
 
 	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"pgvector/pgvector:pg16",
 		postgres.WithDatabase("test-db"),
 		postgres.WithUsername("user"),
 		postgres.WithPassword("password"),
@@ -46,10 +46,10 @@ func TestPostgresMemoryStore(t *testing.T) {
 
 	store := NewPostgresMemoryStore(pool)
 
-	_, err = pool.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; CREATE TABLE memories (
+	_, err = pool.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; CREATE EXTENSION IF NOT EXISTS vector; CREATE TABLE memories (
 		id UUID PRIMARY KEY,
 		content TEXT NOT NULL,
-		embedding VECTOR(3),
+		embedding VECTOR(384),
 		confidence FLOAT NOT NULL,
 		version INT NOT NULL
 	);`)

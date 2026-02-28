@@ -22,6 +22,11 @@ func (l *Logger) Info(msg string, args ...interface{}) {
 	l.Printf("INFO: "+msg, args...)
 }
 
+// Warn logs a warning message.
+func (l *Logger) Warn(msg string, args ...interface{}) {
+	l.Printf("WARN: "+msg, args...)
+}
+
 // Error logs an error message.
 func (l *Logger) Error(msg string, args ...interface{}) {
 	l.Printf("ERROR: "+msg, args...)

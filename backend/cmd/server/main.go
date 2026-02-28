@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/spf13/viper"
 
 	"evolutionary-mcp/backend/internal/api"
 	"evolutionary-mcp/backend/internal/auth"
@@ -28,13 +32,27 @@ func main() {
 	// Initialize logging
 	logger := logging.NewLogger()
 
+	// Parse command line flags
+	envFile := flag.String("env", "", "Path to .env file")
+	flag.Parse()
+
 	// Load configuration
-	cfg, err := config.LoadConfig()
+	cfg, err := config.LoadConfig(*envFile)
 	if err != nil {
 		logger.Error("Failed to load configuration: %v", err)
 		log.Fatalf("Configuration loading failed: %v", err)
 	}
-	logger.Info("Configuration loaded", "okta_client_id", cfg.Auth.ClientID, "okta_domain", cfg.Auth.OktaDomain)
+	logger.Info("Configuration loaded",
+		"okta_client_id", cfg.Auth.ClientID,
+		"okta_domain", cfg.Auth.OktaDomain,
+		"secret_len", len(cfg.Auth.ClientSecret),
+		"swagger_client_id", cfg.Auth.SwaggerClientID,
+		"config_file", viper.ConfigFileUsed(),
+	)
+
+	if cfg.Auth.SwaggerClientID == cfg.Auth.ClientID {
+		logger.Warn("⚠️  Swagger Client ID matches Backend Client ID. This will fail if Backend is a Web App (requires secret) and Swagger uses PKCE (no secret). Check your config.yaml.")
+	}
 
 	logger.Info("Starting Evolutionary Memory Service")
 
@@ -57,8 +75,12 @@ func main() {
 
 	logger.Info("Service layer initialized")
 
-	// Create HTTP mux
-	mux := http.NewServeMux()
+	// Create Echo server
+	e := echo.New()
+
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
 
 	// Initialize authentication
 	authz, err := auth.New(ctx, cfg)
@@ -68,32 +90,31 @@ func main() {
 	}
 
 	// Register auth handlers
-	mux.HandleFunc("/login", authz.LoginHandler)
-	mux.HandleFunc("/auth/callback", authz.CallbackHandler)
-	mux.HandleFunc("/logout", authz.LogoutHandler)
+	e.GET("/login", echo.WrapHandler(http.HandlerFunc(authz.LoginHandler)))
+	e.GET("/auth/callback", echo.WrapHandler(http.HandlerFunc(authz.CallbackHandler)))
+	e.GET("/logout", echo.WrapHandler(http.HandlerFunc(authz.LogoutHandler)))
 
 	// Mount REST API handlers
+	// Create a group for /api/v1 to match OpenAPI spec and apply auth middleware
+	apiGroup := e.Group("/api/v1")
+	apiGroup.Use(echo.WrapMiddleware(authz.RequireAuth))
 	apiHandler := api.NewHandler()
-	mux.HandleFunc("/api/v1/health", apiHandler.HandleHealth)
+	api.RegisterHandlers(apiGroup, apiHandler)
 
 	logger.Info("REST API handlers mounted")
 
-	// Mount MCP protocol handlers behind authentication
+	// Mount MCP protocol handlers
 	mcpServer := mcp.NewServer(memoryService)
 	mcpHandlers := http.NewServeMux()
 	mcp.MountHTTPHandlers(mcpHandlers, mcpServer.GetMCPServer())
-	mux.Handle("/mcp/", authz.RequireAuth(mcpHandlers))
+	e.Any("/mcp/*", echo.WrapHandler(mcpHandlers))
 
 	logger.Info("MCP protocol handlers mounted")
 
 	// expose OpenAPI spec (with runtime substitution) and Swagger UI
-	mux.HandleFunc("/openapi.yaml", api.SpecHandler(cfg.Auth.OktaDomain))
-
-	mux.HandleFunc("/docs", api.SwaggerHandler(cfg.Auth.OktaDomain, cfg.Auth.ClientID))
-	mux.HandleFunc("/docs/oauth2-redirect.html", api.OAuthRedirectHandler)
-
-	// Wrap with logging middleware
-	handler := loggingMiddleware(mux, logger)
+	e.GET("/openapi.yaml", echo.WrapHandler(http.HandlerFunc(api.SpecHandler(cfg.Auth.OktaDomain))))
+	e.GET("/docs", echo.WrapHandler(http.HandlerFunc(api.SwaggerHandler(cfg.Auth.OktaDomain, cfg.Auth.SwaggerClientID))))
+	e.GET("/docs/oauth2-redirect.html", echo.WrapHandler(api.OAuth2RedirectHandler()))
 
 	// Create HTTP server
 	addr := ":8080"
@@ -103,7 +124,7 @@ func main() {
 	}
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      handler,
+		Handler:      e,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -141,8 +162,10 @@ func main() {
 
 	select {
 	case err := <-serverErrors:
-		logger.Error("Server error: %v", err)
-		log.Fatalf("Server error: %v", err)
+		if err != http.ErrServerClosed {
+			logger.Error("Server error: %v", err)
+			log.Fatalf("Server error: %v", err)
+		}
 	case sig := <-shutdown:
 		logger.Info("Shutdown signal received: %v", sig)
 
@@ -186,20 +209,4 @@ func initDatabase(ctx context.Context, cfg *config.Config, logger *logging.Logge
 	}
 
 	return pool, nil
-}
-
-func loggingMiddleware(next http.Handler, logger *logging.Logger) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		// Call next handler
-		next.ServeHTTP(w, r)
-
-		logger.Info("HTTP request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"remote_addr", r.RemoteAddr,
-			"duration", time.Since(start).String(),
-		)
-	})
 }

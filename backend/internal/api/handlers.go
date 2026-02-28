@@ -1,9 +1,12 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Handler contains HTTP handlers for the payer service REST API
@@ -15,53 +18,54 @@ func NewHandler() *Handler {
 	return &Handler{}
 }
 
-// HealthStatus represents the health check response
-type HealthStatus struct {
-	Status    string    `json:"status"`
-	Timestamp time.Time `json:"timestamp"`
-	Service   string    `json:"service"`
-	Version   string    `json:"version"`
+func (h *Handler) GetHealth(ctx echo.Context) error {
+	status := "ok"
+	service := "evolutionary-mcp"
+	version := "1.0.0"
+	now := time.Now()
+	return ctx.JSON(http.StatusOK, HealthStatus{
+		Status:    &status,
+		Timestamp: &now,
+		Service:   &service,
+		Version:   &version,
+	})
 }
 
-// HandleHealth returns basic health status (always returns 200 OK)
-func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	status := HealthStatus{
-		Status:    "ok",
-		Timestamp: time.Now(),
-		Service:   "evolutionary-mcp",
-		Version:   "1.0.0",
+func (h *Handler) GetStatus(ctx echo.Context) error {
+	status := "ok"
+	service := "evolutionary-mcp"
+	version := "1.0.0"
+	now := time.Now()
+	return ctx.JSON(http.StatusOK, HealthStatus{
+		Status:    &status,
+		Timestamp: &now,
+		Service:   &service,
+		Version:   &version,
+	})
+}
+
+func (h *Handler) ListWorkflows(ctx echo.Context) error {
+	id := uuid.MustParse("0c1a4b6e-8e5e-4b1d-8c1a-4b6e8e5e4b1d")
+	name := "test"
+	description := "test workflow"
+	workflows := []Workflow{
+		{
+			Id:          (*openapi_types.UUID)(&id),
+			Name:        &name,
+			Description: &description,
+		},
 	}
-	writeJSON(w, http.StatusOK, status)
+	return ctx.JSON(http.StatusOK, workflows)
 }
 
-// writeJSON writes a JSON response with the given status code
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		// Log error but can't change response at this point
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+func (h *Handler) PutWorkflow(ctx echo.Context) error {
+	return ctx.NoContent(http.StatusNotImplemented)
 }
 
-// ProblemDetails represents an RFC 7807 Problem Details response
-type ProblemDetails struct {
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	Status   int    `json:"status"`
-	Detail   string `json:"detail"`
-	Instance string `json:"instance,omitempty"`
+func (h *Handler) PatchWorkflow(ctx echo.Context) error {
+	return ctx.NoContent(http.StatusNotImplemented)
 }
 
-// writeError writes an RFC 7807 Problem Details JSON error response
-func writeError(w http.ResponseWriter, status int, title, detail string) {
-	problem := ProblemDetails{
-		Type:   "about:blank",
-		Title:  title,
-		Status: status,
-		Detail: detail,
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(problem)
+func (h *Handler) DeleteWorkflow(ctx echo.Context) error {
+	return ctx.NoContent(http.StatusNotImplemented)
 }
