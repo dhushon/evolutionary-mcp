@@ -8,6 +8,8 @@ import (
 
 // Config holds the configuration for the application.
 type Config struct {
+	Environment   string `mapstructure:"environment"`
+	DevModeBypass bool   `mapstructure:"dev_mode_bypass"`
 	DB struct {
 		Host     string `mapstructure:"host"`
 		Port     int    `mapstructure:"port"`
@@ -41,6 +43,7 @@ func LoadConfig(envPath string) (*Config, error) {
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
 	viper.AddConfigPath("..")
+	viper.AddConfigPath("../..")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -63,6 +66,13 @@ func LoadConfig(envPath string) (*Config, error) {
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		return nil, err
+	}
+
+	if env := viper.GetString("ENVIRONMENT"); env != "" {
+		config.Environment = env
+	}
+	if bypass := viper.GetBool("DEV_MODE_BYPASS"); bypass {
+		config.DevModeBypass = bypass
 	}
 
 	// env overrides (especially useful in containerized environments)

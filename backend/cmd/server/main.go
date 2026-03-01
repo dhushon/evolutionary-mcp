@@ -15,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 
 	"evolutionary-mcp/backend/internal/api"
 	"evolutionary-mcp/backend/internal/auth"
@@ -27,7 +28,9 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	// Create a context that is cancelled on interrupt signals
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Initialize logging
 	logger := logging.NewLogger()
@@ -67,7 +70,7 @@ func main() {
 	logger.Info("Database connected")
 
 	// Initialize repository layer
-	memoryStore := repository.NewPostgresMemoryStore(dbPool)
+	memoryStore := repository.NewPostgresMemoryStore(dbPool, logger)
 
 	// Initialize service layer
 	mlClient := services.NewHTTPMLClient(cfg.MLSidecar.URL)
@@ -81,9 +84,10 @@ func main() {
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(otelecho.Middleware("evolutionary-mcp"))
 
 	// Initialize authentication
-	authz, err := auth.New(ctx, cfg)
+	authz, err := auth.New(ctx, cfg, memoryStore, logger)
 	if err != nil {
 		logger.Error("failed to initialize auth", "error", err)
 		log.Fatalf("auth initialization failed: %v", err)
@@ -98,8 +102,8 @@ func main() {
 	// Create a group for /api/v1 to match OpenAPI spec and apply auth middleware
 	apiGroup := e.Group("/api/v1")
 	apiGroup.Use(echo.WrapMiddleware(authz.RequireAuth))
-	apiHandler := api.NewHandler()
-	api.RegisterHandlers(apiGroup, apiHandler)
+	apiServer := api.NewServer(memoryStore)
+	api.RegisterHandlers(apiGroup, apiServer)
 
 	logger.Info("REST API handlers mounted")
 
@@ -156,18 +160,14 @@ func main() {
 		}
 	}()
 
-	// Wait for shutdown signal
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-
 	select {
 	case err := <-serverErrors:
 		if err != http.ErrServerClosed {
 			logger.Error("Server error: %v", err)
 			log.Fatalf("Server error: %v", err)
 		}
-	case sig := <-shutdown:
-		logger.Info("Shutdown signal received: %v", sig)
+	case <-ctx.Done():
+		logger.Info("Shutdown signal received")
 
 		// Create shutdown context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

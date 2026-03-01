@@ -4,9 +4,9 @@
 # Go backend in the foreground.  The compose phase also ensures the database is
 # configured with the credentials expected by config.yaml.
 
-.PHONY: run db compose-up compose-down build clean setup-env deps
+.PHONY: run db compose-up compose-down build clean setup-env deps migrate seed migrate-force db-reset
 
-run: db
+run: db migrate
 	@echo "Starting backend..."
 	# wait for Postgres to accept connections before starting server
 	until docker-compose exec -T postgres pg_isready -U user > /dev/null 2>&1; do \
@@ -28,6 +28,33 @@ db:
 	# The "redis" service is not strictly required for `make run`; if it fails,
 	# we log a warning but continue.
 	@docker-compose up -d redis || echo "redis service failed to start; continue anyway"
+
+migrate:
+	@echo "Running migrations..."
+	@docker run --rm -v $(shell pwd)/backend/migrations:/migrations --network host migrate/migrate \
+		-path=/migrations/ \
+		-database "postgres://user:password@localhost:5432/db?sslmode=disable" \
+		up
+
+migrate-force:
+	@echo "Forcing migration version..."
+	@if [ -z "$(VERSION)" ]; then echo "Error: VERSION is not set. Usage: make migrate-force VERSION=<version_number>"; exit 1; fi
+	@docker run --rm -v $(shell pwd)/backend/migrations:/migrations --network host migrate/migrate \
+		-path=/migrations/ \
+		-database "postgres://user:password@localhost:5432/db?sslmode=disable" \
+		force $(VERSION)
+
+db-reset:
+	@echo "⚠️  WARNING: This will destroy all data in the database!"
+	@docker-compose down -v
+	@docker-compose up -d postgres
+	@echo "Waiting for Postgres..."
+	@sleep 5
+	@$(MAKE) migrate
+
+seed:
+	@echo "Seeding database..."
+	@cd backend && go run ./cmd/seed
 
 # full composition including build
 compose-up:

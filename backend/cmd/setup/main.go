@@ -51,6 +51,13 @@ func createEnvFile() {
 	// Keep this in sync with backend/internal/config/config.go
 	groups := []EnvGroup{
 		{
+			Name: "General Configuration",
+			Vars: []EnvVar{
+				{"ENVIRONMENT", "DEV", "Environment (DEV, PROD)"},
+				{"DEV_MODE_BYPASS", "true", "Bypass authentication for development (true/false)"},
+			},
+		},
+		{
 			Name: "Database Configuration",
 			Vars: []EnvVar{
 				{"DB_HOST", "localhost", "Database host"},

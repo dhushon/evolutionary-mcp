@@ -208,3 +208,28 @@ type ProblemDetails struct {
 	Instance string `json:"instance,omitempty"`
 	TraceID  string `json:"trace_id,omitempty"`
 }
+
+// WorkflowStep represents a single step in a workflow
+type WorkflowStep struct {
+	ID          string    `json:"id" db:"id"`
+	WorkflowID  string    `json:"workflow_id" db:"workflow_id"`
+	Name        string    `json:"name" db:"name"`
+	Description *string   `json:"description,omitempty" db:"description"`
+	Action      string    `json:"action" db:"action"`
+	Config      []byte    `json:"config,omitempty" db:"config"` // JSONB
+	Order       int       `json:"order" db:"order"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// WorkflowExecution represents an instance of a running workflow
+type WorkflowExecution struct {
+	ID         string    `json:"id" db:"id"`
+	WorkflowID string    `json:"workflow_id" db:"workflow_id"`
+	Status     string    `json:"status" db:"status"`
+	Input      []byte    `json:"input,omitempty" db:"input"`     // JSONB
+	Output     []byte    `json:"output,omitempty" db:"output"`   // JSONB
+	StartedAt  time.Time `json:"started_at" db:"started_at"`
+	EndedAt    *time.Time `json:"ended_at,omitempty" db:"ended_at"`
+	CreatedBy  *string   `json:"created_by,omitempty" db:"created_by"`
+}

@@ -268,3 +268,15 @@ external dependencies.
 > features when you flip the site to public.  Cloudflare will handle valid
 > certificates on your behalf and can also proxy requests back to your
 > containerized backend running on Cloud Run or elsewhere.
+
+## 8. Active Development Tasks (Context for Next Session)
+
+**Current Status:**
+- **Auth**: Dual-client architecture (Backend Confidential + SPA Public) is fully configured and documented. Scopes are centralized in `backend/internal/auth/scopes.go`.
+- **Config**: Setup utility (`make setup-env`) is working and generates `.env` files.
+- **Frontend**: Vite proxy is configured in `frontend/vite.config.ts` to forward `/api`, `/login`, and `/logout` to the backend.
+
+**Next Steps:**
+1.  **Workflows API**: Create DB migration for `workflows` table and implement `listWorkflows` handler logic in Go.
+2.  **TLS Verification**: Test `tls.enable: true` locally and ensure Vite proxy handles self-signed certs correctly (may need `secure: false` in proxy config).
+3.  **Frontend Data**: Wire up React components to fetch from `/api/v1/workflows`.

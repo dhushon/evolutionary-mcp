@@ -9,10 +9,19 @@ import (
 	"strings"
 
 	"evolutionary-mcp/backend/internal/config"
+	"evolutionary-mcp/backend/internal/repository"
+	"evolutionary-mcp/backend/pkg/models"
 
 	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
 )
+
+// Logger defines the logging interface compatible with the application logger.
+type Logger interface {
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Error(msg string, args ...any)
+}
 
 // Auth contains configuration and helpers for performing OpenID Connect
 // authentication with an Okta tenant.
@@ -20,43 +29,69 @@ type Auth struct {
 	oauth2Config *oauth2.Config
 	verifier     *oidc.IDTokenVerifier
 	apiVerifier  *oidc.IDTokenVerifier
+	repo         repository.Repository
+	logger       Logger
+	devMode      bool
+	authBypass   bool
 }
 
 // New creates a new Auth object using values from the application
 // configuration. It establishes a connection to the provider and prepares an
 // ID token verifier.
-func New(ctx context.Context, cfg *config.Config) (*Auth, error) {
-	if cfg.Auth.OktaDomain == "" || cfg.Auth.ClientID == "" ||
-		cfg.Auth.ClientSecret == "" || cfg.Auth.RedirectURL == "" {
-		return nil, errors.New("auth configuration is incomplete")
+func New(ctx context.Context, cfg *config.Config, repo repository.Repository, logger Logger) (*Auth, error) {
+	isDev := strings.ToUpper(cfg.Environment) == "DEV"
+	shouldBypass := isDev && cfg.DevModeBypass
+
+	var oauth2Config *oauth2.Config
+	var verifier *oidc.IDTokenVerifier
+	var apiVerifier *oidc.IDTokenVerifier
+
+	if !shouldBypass {
+		if cfg.Auth.OktaDomain == "" || cfg.Auth.ClientID == "" ||
+			cfg.Auth.ClientSecret == "" || cfg.Auth.RedirectURL == "" {
+			return nil, errors.New("auth configuration is incomplete")
+		}
+
+		provider, err := oidc.NewProvider(ctx, cfg.Auth.OktaDomain)
+		if err != nil {
+			return nil, err
+		}
+
+		oauth2Config = &oauth2.Config{
+			ClientID:     cfg.Auth.ClientID,
+			ClientSecret: cfg.Auth.ClientSecret,
+			Endpoint:     provider.Endpoint(),
+			RedirectURL:  cfg.Auth.RedirectURL,
+			Scopes:       []string{ScopeOpenID},
+		}
+
+		verifier = provider.Verifier(&oidc.Config{ClientID: cfg.Auth.ClientID})
+
+		// Create a separate verifier for Access Tokens (Bearer).
+		// We skip ClientID check because Access Tokens often have a different audience (e.g. "api://default")
+		apiVerifier = provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
 	}
 
-	provider, err := oidc.NewProvider(ctx, cfg.Auth.OktaDomain)
-	if err != nil {
-		return nil, err
-	}
-
-	oauth2Config := &oauth2.Config{
-		ClientID:     cfg.Auth.ClientID,
-		ClientSecret: cfg.Auth.ClientSecret,
-		Endpoint:     provider.Endpoint(),
-		RedirectURL:  cfg.Auth.RedirectURL,
-		Scopes:       []string{ScopeOpenID},
-	}
-
-	verifier := provider.Verifier(&oidc.Config{ClientID: cfg.Auth.ClientID})
-
-	// Create a separate verifier for Access Tokens (Bearer).
-	// We skip ClientID check because Access Tokens often have a different audience (e.g. "api://default")
-	apiVerifier := provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
-
-	return &Auth{oauth2Config: oauth2Config, verifier: verifier, apiVerifier: apiVerifier}, nil
+	return &Auth{
+		oauth2Config: oauth2Config,
+		verifier:     verifier,
+		apiVerifier:  apiVerifier,
+		repo:         repo,
+		logger:       logger,
+		devMode:      isDev,
+		authBypass:   shouldBypass,
+	}, nil
 }
 
 // LoginHandler initiates the OAuth2 authorization code flow by redirecting the
 // user to the Okta authorization endpoint. A random state value is stored in a
 // cookie to mitigate CSRF attacks.
 func (a *Auth) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if a.authBypass {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
 	state, err := generateState()
 	if err != nil {
 		http.Error(w, "failed to generate state", http.StatusInternalServerError)
@@ -78,6 +113,11 @@ func (a *Auth) LoginHandler(w http.ResponseWriter, r *http.Request) {
 // parameter, exchanges the code for tokens, validates the ID token, and sets a
 // session cookie containing the raw ID token.
 func (a *Auth) CallbackHandler(w http.ResponseWriter, r *http.Request) {
+	if a.authBypass {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
 	// verify state
 	cookie, err := r.Cookie("oauthstate")
 	if err != nil || r.URL.Query().Get("state") != cookie.Value {
@@ -127,29 +167,71 @@ func (a *Auth) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 // If the token is missing or invalid the user is redirected to the login page.
 func (a *Auth) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check for Authorization header first (for Swagger/API clients)
-		if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-			if _, err := a.apiVerifier.Verify(r.Context(), token); err == nil {
-				next.ServeHTTP(w, r)
+		var email string
+
+		if a.authBypass {
+			email = "dev@localhost"
+		} else {
+			var token *oidc.IDToken
+			var err error
+
+			// Check for Authorization header first (for Swagger/API clients)
+			if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+				rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+				token, err = a.apiVerifier.Verify(r.Context(), rawToken)
+				if err != nil {
+					http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
+					return
+				}
+			} else {
+				cookie, err := r.Cookie("id_token")
+				if err != nil {
+					http.Redirect(w, r, "/login", http.StatusSeeOther)
+					return
+				}
+				token, err = a.verifier.Verify(r.Context(), cookie.Value)
+				if err != nil {
+					http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
+					return
+				}
+			}
+
+			// Extract claims to identify the user and tenant
+			var claims struct {
+				Email string `json:"email"`
+			}
+			if err := token.Claims(&claims); err != nil {
+				http.Error(w, "failed to parse token claims", http.StatusUnauthorized)
 				return
 			}
-			http.Error(w, "invalid token", http.StatusUnauthorized)
-			return
+			email = claims.Email
 		}
 
-		cookie, err := r.Cookie("id_token")
+		// Resolve Tenant ID from Email Domain
+		parts := strings.Split(email, "@")
+		if len(parts) != 2 {
+			http.Error(w, "invalid email format in token", http.StatusUnauthorized)
+			return
+		}
+		domain := parts[1]
+
+		// Lookup or Auto-Provision Tenant
+		tenant, err := a.repo.GetTenantByDomain(r.Context(), domain)
 		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
+			// Auto-provisioning for Day 1 experience
+			tenant = &models.Tenant{Name: domain, Domain: domain}
+			if createErr := a.repo.CreateTenant(r.Context(), tenant); createErr != nil {
+				if a.logger != nil {
+					a.logger.Error("failed to provision tenant", "domain", domain, "error", createErr)
+				}
+				http.Error(w, "failed to provision tenant: "+createErr.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 
-		if _, err := a.verifier.Verify(r.Context(), cookie.Value); err != nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
-		}
-
-		next.ServeHTTP(w, r)
+		// Inject tenant_id into context
+		ctx := context.WithValue(r.Context(), "tenant_id", tenant.ID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
