@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"evolutionary-mcp/backend/internal/config"
+	"evolutionary-mcp/backend/internal/contextutil"
 	"evolutionary-mcp/backend/internal/repository"
 	"evolutionary-mcp/backend/pkg/models"
 
@@ -62,7 +63,7 @@ func New(ctx context.Context, cfg *config.Config, repo repository.Repository, lo
 			ClientSecret: cfg.Auth.ClientSecret,
 			Endpoint:     provider.Endpoint(),
 			RedirectURL:  cfg.Auth.RedirectURL,
-			Scopes:       []string{ScopeOpenID},
+			Scopes:       []string{oidc.ScopeOpenID},
 		}
 
 		verifier = provider.Verifier(&oidc.Config{ClientID: cfg.Auth.ClientID})
@@ -229,8 +230,8 @@ func (a *Auth) RequireAuth(next http.Handler) http.Handler {
 			}
 		}
 
-		// Inject tenant_id into context
-		ctx := context.WithValue(r.Context(), "tenant_id", tenant.ID)
+		// Inject tenant_id into context using contextutil
+		ctx := contextutil.WithTenant(r.Context(), tenant.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -1,0 +1,29 @@
+:root {
+  /* Brand Palette */
+  --color-primary: #3b82f6; /* Blue 500 */
+  --color-primary-hover: #2563eb; /* Blue 600 */
+  
+  /* Backgrounds & Surfaces */
+  --color-bg-base: #f8fafc; /* Slate 50 */
+  --color-bg-surface: #ffffff;
+  --color-bg-accent: #f1f5f9; /* Slate 100 */
+  
+  /* Borders */
+  --color-border-base: #e2e8f0; /* Slate 200 */
+  
+  /* Text */
+  --color-text-base: #0f172a; /* Slate 900 */
+  --color-text-muted: #64748b; /* Slate 500 */
+}
+
+/* Dark Mode Overrides */
+.dark {
+  --color-bg-base: #0f172a; /* Slate 900 */
+  --color-bg-surface: #1e293b; /* Slate 800 */
+  --color-bg-accent: #334155; /* Slate 700 */
+  
+  --color-border-base: #334155;
+  
+  --color-text-base: #f8fafc;
+  --color-text-muted: #94a3b8; /* Slate 400 */
+}

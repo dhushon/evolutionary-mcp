@@ -4,15 +4,44 @@
 package api
 
 import (
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
 	OpenIdConnectScopes = "openIdConnect.Scopes"
 )
+
+// Defines values for WorkflowElementType.
+const (
+	WorkflowElementTypeDetail   WorkflowElementType = "detail"
+	WorkflowElementTypeElement  WorkflowElementType = "element"
+	WorkflowElementTypeWorkflow WorkflowElementType = "workflow"
+)
+
+// Defines values for WorkflowStatus.
+const (
+	Active   WorkflowStatus = "active"
+	Archived WorkflowStatus = "archived"
+	Draft    WorkflowStatus = "draft"
+)
+
+// GroundingRule defines model for GroundingRule.
+type GroundingRule struct {
+	Content    *string             `json:"content,omitempty"`
+	CreatedAt  *time.Time          `json:"created_at,omitempty"`
+	Id         *openapi_types.UUID `json:"id,omitempty"`
+	IsGlobal   *bool               `json:"is_global,omitempty"`
+	Name       *string             `json:"name,omitempty"`
+	TenantId   *openapi_types.UUID `json:"tenant_id,omitempty"`
+	UpdatedAt  *time.Time          `json:"updated_at,omitempty"`
+	WorkflowId *openapi_types.UUID `json:"workflow_id"`
+}
 
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
@@ -22,38 +51,165 @@ type HealthStatus struct {
 	Version   *string    `json:"version,omitempty"`
 }
 
+// Tenant defines model for Tenant.
+type Tenant struct {
+	BrandTitle *string             `json:"brand_title,omitempty"`
+	CreatedAt  *time.Time          `json:"created_at,omitempty"`
+	Domain     *string             `json:"domain,omitempty"`
+	Id         *openapi_types.UUID `json:"id,omitempty"`
+	LogoSvg    *string             `json:"logo_svg,omitempty"`
+	Name       *string             `json:"name,omitempty"`
+	UpdatedAt  *time.Time          `json:"updated_at,omitempty"`
+}
+
 // Workflow defines model for Workflow.
 type Workflow struct {
-	Description *string             `json:"description,omitempty"`
-	Id          *openapi_types.UUID `json:"id,omitempty"`
-	Name        *string             `json:"name,omitempty"`
+	CreatedAt        *time.Time           `json:"created_at,omitempty"`
+	Description      *string              `json:"description,omitempty"`
+	ElementType      *WorkflowElementType `json:"element_type,omitempty"`
+	Id               *openapi_types.UUID  `json:"id,omitempty"`
+	IsLatest         *bool                `json:"is_latest,omitempty"`
+	Name             *string              `json:"name,omitempty"`
+	ParentId         *openapi_types.UUID  `json:"parent_id"`
+	SaveAsNewVersion *bool                `json:"save_as_new_version,omitempty"`
+	Status           *WorkflowStatus      `json:"status,omitempty"`
+	TenantId         *string              `json:"tenant_id,omitempty"`
+	UpdatedAt        *time.Time           `json:"updated_at,omitempty"`
+	Version          *int                 `json:"version,omitempty"`
+	WorkflowId       *openapi_types.UUID  `json:"workflow_id,omitempty"`
 }
+
+// WorkflowElementType defines model for Workflow.ElementType.
+type WorkflowElementType string
+
+// WorkflowStatus defines model for Workflow.Status.
+type WorkflowStatus string
+
+// CreateGroundingRuleJSONRequestBody defines body for CreateGroundingRule for application/json ContentType.
+type CreateGroundingRuleJSONRequestBody = GroundingRule
+
+// UpdateGroundingRuleJSONRequestBody defines body for UpdateGroundingRule for application/json ContentType.
+type UpdateGroundingRuleJSONRequestBody = GroundingRule
+
+// PutWorkflowJSONRequestBody defines body for PutWorkflow for application/json ContentType.
+type PutWorkflowJSONRequestBody = Workflow
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List grounding rules
+	// (GET /grounding)
+	ListGroundingRules(ctx echo.Context) error
+	// Create grounding rule
+	// (POST /grounding)
+	CreateGroundingRule(ctx echo.Context) error
+	// Delete grounding rule
+	// (DELETE /grounding/{id})
+	DeleteGroundingRule(ctx echo.Context, id openapi_types.UUID) error
+	// Get grounding rule
+	// (GET /grounding/{id})
+	GetGroundingRule(ctx echo.Context, id openapi_types.UUID) error
+	// Update grounding rule
+	// (PUT /grounding/{id})
+	UpdateGroundingRule(ctx echo.Context, id openapi_types.UUID) error
 	// Health check
 	// (GET /health)
 	GetHealth(ctx echo.Context) error
 	// Status check
 	// (GET /status)
 	GetStatus(ctx echo.Context) error
-	// Delete a workflow
-	// (DELETE /workflows)
-	DeleteWorkflow(ctx echo.Context) error
+	// Get tenant branding
+	// (GET /tenant)
+	GetTenant(ctx echo.Context) error
 	// List workflows
 	// (GET /workflows)
 	ListWorkflows(ctx echo.Context) error
-	// Partially update a workflow
-	// (PATCH /workflows)
-	PatchWorkflow(ctx echo.Context) error
 	// Create or update a workflow
 	// (PUT /workflows)
 	PutWorkflow(ctx echo.Context) error
+	// Get workflow by ID
+	// (GET /workflows/{id})
+	GetWorkflow(ctx echo.Context, id openapi_types.UUID) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
+}
+
+// ListGroundingRules converts echo context to params.
+func (w *ServerInterfaceWrapper) ListGroundingRules(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListGroundingRules(ctx)
+	return err
+}
+
+// CreateGroundingRule converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateGroundingRule(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read", "evolve:write"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateGroundingRule(ctx)
+	return err
+}
+
+// DeleteGroundingRule converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteGroundingRule(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, ctx.Param("id"), &id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read", "evolve:write"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteGroundingRule(ctx, id)
+	return err
+}
+
+// GetGroundingRule converts echo context to params.
+func (w *ServerInterfaceWrapper) GetGroundingRule(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, ctx.Param("id"), &id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetGroundingRule(ctx, id)
+	return err
+}
+
+// UpdateGroundingRule converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateGroundingRule(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, ctx.Param("id"), &id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read", "evolve:write"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateGroundingRule(ctx, id)
+	return err
 }
 
 // GetHealth converts echo context to params.
@@ -76,14 +232,14 @@ func (w *ServerInterfaceWrapper) GetStatus(ctx echo.Context) error {
 	return err
 }
 
-// DeleteWorkflow converts echo context to params.
-func (w *ServerInterfaceWrapper) DeleteWorkflow(ctx echo.Context) error {
+// GetTenant converts echo context to params.
+func (w *ServerInterfaceWrapper) GetTenant(ctx echo.Context) error {
 	var err error
 
-	ctx.Set(OpenIdConnectScopes, []string{"evolve:read", "evolve:write"})
+	ctx.Set(OpenIdConnectScopes, []string{"openid", "profile", "email"})
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DeleteWorkflow(ctx)
+	err = w.Handler.GetTenant(ctx)
 	return err
 }
 
@@ -98,17 +254,6 @@ func (w *ServerInterfaceWrapper) ListWorkflows(ctx echo.Context) error {
 	return err
 }
 
-// PatchWorkflow converts echo context to params.
-func (w *ServerInterfaceWrapper) PatchWorkflow(ctx echo.Context) error {
-	var err error
-
-	ctx.Set(OpenIdConnectScopes, []string{"evolve:read", "evolve:write"})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.PatchWorkflow(ctx)
-	return err
-}
-
 // PutWorkflow converts echo context to params.
 func (w *ServerInterfaceWrapper) PutWorkflow(ctx echo.Context) error {
 	var err error
@@ -117,6 +262,24 @@ func (w *ServerInterfaceWrapper) PutWorkflow(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.PutWorkflow(ctx)
+	return err
+}
+
+// GetWorkflow converts echo context to params.
+func (w *ServerInterfaceWrapper) GetWorkflow(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, ctx.Param("id"), &id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetWorkflow(ctx, id)
 	return err
 }
 
@@ -148,11 +311,16 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 		Handler: si,
 	}
 
+	router.GET(baseURL+"/grounding", wrapper.ListGroundingRules)
+	router.POST(baseURL+"/grounding", wrapper.CreateGroundingRule)
+	router.DELETE(baseURL+"/grounding/:id", wrapper.DeleteGroundingRule)
+	router.GET(baseURL+"/grounding/:id", wrapper.GetGroundingRule)
+	router.PUT(baseURL+"/grounding/:id", wrapper.UpdateGroundingRule)
 	router.GET(baseURL+"/health", wrapper.GetHealth)
 	router.GET(baseURL+"/status", wrapper.GetStatus)
-	router.DELETE(baseURL+"/workflows", wrapper.DeleteWorkflow)
+	router.GET(baseURL+"/tenant", wrapper.GetTenant)
 	router.GET(baseURL+"/workflows", wrapper.ListWorkflows)
-	router.PATCH(baseURL+"/workflows", wrapper.PatchWorkflow)
 	router.PUT(baseURL+"/workflows", wrapper.PutWorkflow)
+	router.GET(baseURL+"/workflows/:id", wrapper.GetWorkflow)
 
 }

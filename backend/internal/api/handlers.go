@@ -47,6 +47,20 @@ func (h *Server) GetStatus(ctx echo.Context) error {
 	})
 }
 
+func (h *Server) GetTenant(ctx echo.Context) error {
+	tenantID, ok := ctx.Request().Context().Value("tenant_id").(string)
+	if !ok || tenantID == "" {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Tenant ID not found in context")
+	}
+
+	tenant, err := h.Repo.GetTenantByID(ctx.Request().Context(), tenantID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "Tenant not found: "+err.Error())
+	}
+
+	return ctx.JSON(http.StatusOK, tenant)
+}
+
 func (h *Server) PatchWorkflow(ctx echo.Context) error {
 	return ctx.NoContent(http.StatusNotImplemented)
 }

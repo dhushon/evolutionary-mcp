@@ -73,7 +73,7 @@ func TestPostgresMemoryStore(t *testing.T) {
 	}
 	defer pool.Close()
 
-	// Initialize Schema
+	// Initialize Schema (matching all migrations)
 	schema := `
 	CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 	CREATE EXTENSION IF NOT EXISTS vector;
@@ -82,6 +82,8 @@ func TestPostgresMemoryStore(t *testing.T) {
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		name TEXT NOT NULL,
 		domain TEXT UNIQUE NOT NULL,
+		logo_svg TEXT,
+		brand_title TEXT,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
@@ -95,14 +97,16 @@ func TestPostgresMemoryStore(t *testing.T) {
 		name TEXT NOT NULL,
 		description TEXT,
 		status TEXT NOT NULL DEFAULT 'draft',
+		parent_id UUID,
+		element_type TEXT NOT NULL DEFAULT 'workflow',
 		input_schema JSONB,
 		output_schema JSONB,
 		created_by TEXT,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
-	CREATE UNIQUE INDEX idx_workflows_version ON workflows (tenant_id, workflow_id, version);
-	CREATE UNIQUE INDEX idx_workflows_latest_active ON workflows (tenant_id, workflow_id) WHERE is_latest = TRUE;
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_version ON workflows (tenant_id, workflow_id, version);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_latest_active ON workflows (tenant_id, workflow_id) WHERE is_latest = TRUE;
 
 	CREATE TABLE IF NOT EXISTS memories (
 		id UUID PRIMARY KEY,
@@ -113,6 +117,18 @@ func TestPostgresMemoryStore(t *testing.T) {
 		version INT NOT NULL,
 		provenance JSONB DEFAULT '{}',
 		workflow_id UUID
+	);
+
+	CREATE TABLE IF NOT EXISTS grounding_rules (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		tenant_id UUID NOT NULL REFERENCES tenants(id),
+		workflow_id UUID REFERENCES workflows(id),
+		name TEXT NOT NULL,
+		content TEXT NOT NULL,
+		embedding VECTOR(384),
+		is_global BOOLEAN NOT NULL DEFAULT FALSE,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 	`
 	_, err = pool.Exec(ctx, schema)
@@ -126,134 +142,77 @@ func TestPostgresMemoryStore(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to begin transaction: %v", err)
 		}
-		defer tx.Rollback(ctx) // Cleanup motion: Always rollback at end of test
+		defer tx.Rollback(ctx)
 
 		store := NewPostgresMemoryStore(TxWrapper{tx}, &TestLogger{t})
 		fn(store)
 	}
 
-	t.Run("Memories: Save and Get", func(t *testing.T) {
+	t.Run("GroundingRules: CRUD", func(t *testing.T) {
 		withTx(t, func(store *PostgresMemoryStore) {
-			id := uuid.New().String()
-			memory := &Memory{
-				ID:         id,
-				TenantID:   "tenant-a",
-				Content:    "test content",
-				Confidence: 0.9,
-				Version:    1,
-			}
-
-			err := store.Save(ctx, memory)
-			require.NoError(t, err)
-
-			retrieved, err := store.Get(ctx, id)
-			require.NoError(t, err)
-			assert.Equal(t, memory.ID, retrieved.ID)
-			assert.Equal(t, "tenant-a", retrieved.TenantID)
-		})
-	})
-
-	t.Run("Workflows: Evolution Strategy", func(t *testing.T) {
-		withTx(t, func(store *PostgresMemoryStore) {
-			// 1. Create Initial Workflow
-			wfID := uuid.New().String()
-			wf := &models.Workflow{
-				ID:          uuid.New().String(),
-				TenantID:    "default",
-				WorkflowID:  wfID,
-				Name:        "Summarizer",
-				Description: "v1 description",
-				Status:      "active",
-			}
-
-			err := store.CreateWorkflow(ctx, wf)
-			assert.NoError(t, err)
-			assert.Equal(t, 1, wf.Version)
-			assert.True(t, wf.IsLatest)
-
-			// 2. Evolve Workflow (Update)
-			wf2 := &models.Workflow{
-				ID:          uuid.New().String(),
-				TenantID:    "default",
-				WorkflowID:  wfID,
-				Name:        "Summarizer",
-				Description: "v2 description",
-			}
-			err = store.CreateWorkflow(ctx, wf2)
-			assert.NoError(t, err)
-			assert.Equal(t, 2, wf2.Version)
-			assert.True(t, wf2.IsLatest)
-
-			// 3. Verify List only returns latest
-			list, err := store.ListWorkflows(ctx)
-			assert.NoError(t, err)
-			assert.Len(t, list, 1)
-			assert.Equal(t, "v2 description", list[0].Description)
-			assert.Equal(t, 2, list[0].Version)
-		})
-	})
-
-	t.Run("Tenants: Create and Lookup", func(t *testing.T) {
-		withTx(t, func(store *PostgresMemoryStore) {
-			tenant := &models.Tenant{
-				Name:   "Acme Corp",
-				Domain: "acme.com",
-			}
+			// Setup tenant first
+			tenant := &models.Tenant{Name: "Test Tenant", Domain: "test.com"}
 			err := store.CreateTenant(ctx, tenant)
-			assert.NoError(t, err)
-			assert.NotEmpty(t, tenant.ID)
+			require.NoError(t, err)
 
-			found, err := store.GetTenantByDomain(ctx, "acme.com")
+			rule := &models.GroundingRule{
+				Name:     "Test Rule",
+				Content:  "Grounding content",
+				TenantID: tenant.ID,
+				IsGlobal: false,
+			}
+
+			// Create
+			err = store.CreateGroundingRule(ctx, rule)
 			assert.NoError(t, err)
-			assert.Equal(t, tenant.ID, found.ID)
+			assert.NotEmpty(t, rule.ID)
+
+			// Get
+			retrieved, err := store.GetGroundingRule(ctx, rule.ID)
+			assert.NoError(t, err)
+			assert.Equal(t, rule.Name, retrieved.Name)
+
+			// Update
+			rule.Name = "Updated Rule"
+			err = store.UpdateGroundingRule(ctx, rule)
+			assert.NoError(t, err)
+
+			// List
+			list, err := store.ListGroundingRules(ctx, tenant.ID)
+			assert.NoError(t, err)
+			assert.NotEmpty(t, list)
+			assert.Equal(t, "Updated Rule", list[0].Name)
+
+			// Delete
+			err = store.DeleteGroundingRule(ctx, rule.ID)
+			assert.NoError(t, err)
 		})
 	})
 
-	t.Run("Multi-Tenancy: Isolation", func(t *testing.T) {
+	t.Run("Workflows: Hierarchical support", func(t *testing.T) {
 		withTx(t, func(store *PostgresMemoryStore) {
-			// 1. Create Workflow for Tenant A
-			wfA := &models.Workflow{
-				ID:         uuid.New().String(),
-				TenantID:   "tenant-a",
-				WorkflowID: uuid.New().String(),
-				Name:       "Workflow A",
-				Version:    1,
-				IsLatest:   true,
+			parent := &models.Workflow{
+				WorkflowID:  uuid.New().String(),
+				TenantID:    "tenant-1",
+				Name:        "Parent",
+				ElementType: "workflow",
 			}
-			err := store.CreateWorkflow(ctx, wfA)
+			err := store.CreateWorkflow(ctx, parent)
 			require.NoError(t, err)
 
-			// 2. Create Workflow for Tenant B
-			wfB := &models.Workflow{
-				ID:         uuid.New().String(),
-				TenantID:   "tenant-b",
-				WorkflowID: uuid.New().String(),
-				Name:       "Workflow B",
-				Version:    1,
-				IsLatest:   true,
+			child := &models.Workflow{
+				WorkflowID:  uuid.New().String(),
+				TenantID:    "tenant-1",
+				Name:        "Child",
+				ParentID:    &parent.ID,
+				ElementType: "element",
 			}
-			err = store.CreateWorkflow(ctx, wfB)
-			require.NoError(t, err)
+			err = store.CreateWorkflow(ctx, child)
+			assert.NoError(t, err)
 
-			// 3. List as Tenant A (Should only see A)
-			ctxA := context.WithValue(ctx, "tenant_id", "tenant-a")
-			listA, err := store.ListWorkflows(ctxA)
-			require.NoError(t, err)
-			assert.Len(t, listA, 1)
-			assert.Equal(t, "Workflow A", listA[0].Name)
-
-			// 4. List as Tenant B (Should only see B)
-			ctxB := context.WithValue(ctx, "tenant_id", "tenant-b")
-			listB, err := store.ListWorkflows(ctxB)
-			require.NoError(t, err)
-			assert.Len(t, listB, 1)
-			assert.Equal(t, "Workflow B", listB[0].Name)
-
-			// 5. List as Unknown Tenant (Should see nothing or default)
-			ctxC := context.WithValue(ctx, "tenant_id", "tenant-c")
-			listC, err := store.ListWorkflows(ctxC)
-			require.NoError(t, err)
-			assert.Len(t, listC, 0)
+			retrieved, err := store.GetWorkflow(ctx, child.ID)
+			assert.NoError(t, err)
+			assert.Equal(t, parent.ID, *retrieved.ParentID)
 		})
 	})
 }

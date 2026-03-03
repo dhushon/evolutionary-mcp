@@ -32,9 +32,23 @@ type Repository interface {
 	Ping(ctx context.Context) error
 	// CreateWorkflow creates a new workflow or evolves an existing one (append-only).
 	CreateWorkflow(ctx context.Context, workflow *models.Workflow) error
+	// UpdateWorkflow updates an existing workflow version (non-versioning).
+	UpdateWorkflow(ctx context.Context, workflow *models.Workflow) error
+	// GetWorkflow retrieves a specific workflow version by ID.
+	GetWorkflow(ctx context.Context, id string) (*models.Workflow, error)
 	ListWorkflows(ctx context.Context) ([]*models.Workflow, error)
+
+	// GroundingRule operations
+	CreateGroundingRule(ctx context.Context, rule *models.GroundingRule) error
+	GetGroundingRule(ctx context.Context, id string) (*models.GroundingRule, error)
+	ListGroundingRules(ctx context.Context, tenantID string) ([]*models.GroundingRule, error)
+	UpdateGroundingRule(ctx context.Context, rule *models.GroundingRule) error
+	DeleteGroundingRule(ctx context.Context, id string) error
+	SearchGroundingRules(ctx context.Context, tenantID string, embedding []float32) ([]*models.GroundingRule, error)
+
 	// Tenant operations
 	GetTenantByDomain(ctx context.Context, domain string) (*models.Tenant, error)
+	GetTenantByID(ctx context.Context, id string) (*models.Tenant, error)
 	CreateTenant(ctx context.Context, tenant *models.Tenant) error
 }
 

@@ -4,11 +4,240 @@ info:
   description: |
     Evolutionary Memory Service API.
   version: 1.0.0
+
 servers:
   - url: http://localhost:8080/api/v1
     description: Local development (HTTP)
   - url: https://localhost:8443/api/v1
     description: Local development (HTTPS)
+
+tags:
+  - name: health
+    description: Service health and readiness checks
+  - name: status
+    description: Service status
+  - name: tenants
+    description: Tenant operations
+  - name: workflows
+    description: Workflow operations
+  - name: grounding
+    description: Grounding Rule operations
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Returns overall service health status
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Service is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /status:
+    get:
+      tags: [status]
+      summary: Status check
+      description: Returns service status for authenticated users
+      operationId: getStatus
+      security:
+        - openIdConnect: [openid, profile, email]
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /tenant:
+    get:
+      tags: [tenants]
+      summary: Get tenant branding
+      description: Returns the branding configuration for the current tenant
+      operationId: getTenant
+      security:
+        - openIdConnect: [openid, profile, email]
+      responses:
+        '200':
+          description: Tenant branding details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+
+  /workflows:
+    get:
+      tags: [workflows]
+      summary: List workflows
+      description: Returns a list of all active workflows for the tenant
+      operationId: listWorkflows
+      security:
+        - openIdConnect: [evolve:read]
+      responses:
+        '200':
+          description: A list of workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workflow'
+    put:
+      tags: [workflows]
+      summary: Create or update a workflow
+      description: Creates a new workflow concept or updates an existing latest version.
+      operationId: putWorkflow
+      security:
+        - openIdConnect: [evolve:read, evolve:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Workflow'
+      responses:
+        '200':
+          description: Workflow saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+
+  /workflows/{id}:
+    get:
+      tags: [workflows]
+      summary: Get workflow by ID
+      description: Returns a specific workflow version by its unique ID
+      operationId: getWorkflow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - openIdConnect: [evolve:read]
+      responses:
+        '200':
+          description: Workflow details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '404':
+          description: Workflow not found
+
+  /grounding:
+    get:
+      tags: [grounding]
+      summary: List grounding rules
+      description: Returns all grounding rules for the tenant
+      operationId: listGroundingRules
+      security:
+        - openIdConnect: [evolve:read]
+      responses:
+        '200':
+          description: List of grounding rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GroundingRule'
+    post:
+      tags: [grounding]
+      summary: Create grounding rule
+      description: Creates a new foundational truth or stability vector
+      operationId: createGroundingRule
+      security:
+        - openIdConnect: [evolve:read, evolve:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroundingRule'
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroundingRule'
+
+  /grounding/{id}:
+    get:
+      tags: [grounding]
+      summary: Get grounding rule
+      operationId: getGroundingRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - openIdConnect: [evolve:read]
+      responses:
+        '200':
+          description: Rule details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroundingRule'
+    put:
+      tags: [grounding]
+      summary: Update grounding rule
+      operationId: updateGroundingRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - openIdConnect: [evolve:read, evolve:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroundingRule'
+      responses:
+        '200':
+          description: Rule updated
+    delete:
+      tags: [grounding]
+      summary: Delete grounding rule
+      operationId: deleteGroundingRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - openIdConnect: [evolve:read, evolve:write]
+      responses:
+        '204':
+          description: Rule deleted
+
 components:
   securitySchemes:
     openIdConnect:
@@ -23,6 +252,7 @@ components:
             email: "email scope"
             evolve:read: "read access"
             evolve:write: "write access"
+
   schemas:
     HealthStatus:
       type: object
@@ -39,21 +269,46 @@ components:
         version:
           type: string
           example: "1.0.0"
-    ProblemDetails:
+
+    Workflow:
       type: object
       properties:
-        type:
+        id:
           type: string
-        title:
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+        version:
+          type: integer
+        is_latest:
+          type: boolean
+        name:
+          type: string
+        description:
           type: string
         status:
-          type: integer
-        detail:
           type: string
-        instance:
+          enum: [draft, active, archived]
+        parent_id:
           type: string
+          format: uuid
           nullable: true
-    Workflow:
+        element_type:
+          type: string
+          enum: [workflow, element, detail]
+        save_as_new_version:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Tenant:
       type: object
       properties:
         id:
@@ -61,99 +316,41 @@ components:
           format: uuid
         name:
           type: string
-        description:
+        domain:
           type: string
+        logo_svg:
+          type: string
+        brand_title:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
-tags:
-  - name: health
-    description: Service health and readiness checks
-  - name: status
-    description: Service status
-  - name: workflows
-    description: Workflow operations
-
-paths:
-  /health:
-    get:
-      tags: [health]
-      summary: Health check
-      description: Returns overall service health status
-      operationId: getHealth
-      security: [] # No security for this endpoint
-      responses:
-        '200':
-          description: Service is healthy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthStatus'
-  /status:
-    get:
-      tags: [status]
-      summary: Status check
-      description: Returns service status for authenticated users
-      operationId: getStatus
-      security:
-        - openIdConnect: [openid, profile, email]
-      responses:
-        '200':
-          description: Service is healthy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthStatus'
-  /workflows:
-    get:
-      tags: [workflows]
-      summary: List workflows
-      description: Returns a list of workflows
-      operationId: listWorkflows
-      security:
-        - openIdConnect: [evolve:read]
-      responses:
-        '200':
-          description: A list of workflows
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Workflow'
-    put:
-      tags: [workflows]
-      summary: Create or update a workflow
-      description: Creates or updates a workflow.
-      operationId: putWorkflow
-      security:
-        - openIdConnect: [evolve:read, evolve:write]
-      responses:
-        '200':
-          description: Workflow updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Workflow'
-    patch:
-      tags: [workflows]
-      summary: Partially update a workflow
-      description: Partially updates a workflow.
-      operationId: patchWorkflow
-      security:
-        - openIdConnect: [evolve:read, evolve:write]
-      responses:
-        '200':
-          description: Workflow patched
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Workflow'
-    delete:
-      tags: [workflows]
-      summary: Delete a workflow
-      description: Deletes a workflow.
-      operationId: deleteWorkflow
-      security:
-        - openIdConnect: [evolve:read, evolve:write]
-      responses:
-        '204':
-          description: Workflow deleted
+    GroundingRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        content:
+          type: string
+        is_global:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Server holds the dependencies for the API server.
@@ -34,6 +35,18 @@ func (s *Server) ListWorkflows(c echo.Context) error {
 	return c.JSON(http.StatusOK, workflows)
 }
 
+// GetWorkflow returns a single workflow by ID
+// (GET /api/v1/workflows/:id)
+func (s *Server) GetWorkflow(c echo.Context, id openapi_types.UUID) error {
+	ctx := c.Request().Context()
+	workflow, err := s.Repo.GetWorkflow(ctx, id.String())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "Workflow not found: "+err.Error())
+	}
+
+	return c.JSON(http.StatusOK, workflow)
+}
+
 // PutWorkflow creates or updates a workflow
 // (PUT /api/v1/workflows)
 func (s *Server) PutWorkflow(c echo.Context) error {
@@ -50,14 +63,20 @@ func (s *Server) PutWorkflow(c echo.Context) error {
 	}
 	workflow.TenantID = tenantID
 
-	// If this is a new workflow concept (no WorkflowID), generate one.
-	// If WorkflowID is present, the repo will treat it as an evolution of that workflow.
-	if workflow.WorkflowID == "" {
-		workflow.WorkflowID = uuid.New().String()
-	}
-
-	if err := s.Repo.CreateWorkflow(ctx, &workflow); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to save workflow: "+err.Error())
+	// Logic for versioned vs non-versioned save
+	if workflow.SaveAsNewVersion || workflow.WorkflowID == "" {
+		// Create new version or new workflow concept
+		if workflow.WorkflowID == "" {
+			workflow.WorkflowID = uuid.New().String()
+		}
+		if err := s.Repo.CreateWorkflow(ctx, &workflow); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create workflow version: "+err.Error())
+		}
+	} else {
+		// Update existing LATEST version for this concept (Draft mode)
+		if err := s.Repo.UpdateWorkflow(ctx, &workflow); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to update workflow: "+err.Error())
+		}
 	}
 
 	return c.JSON(http.StatusOK, workflow)
