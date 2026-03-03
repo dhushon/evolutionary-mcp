@@ -71,6 +71,16 @@ func (s *MemoryService) Recall(ctx context.Context, query string) ([]*repository
 	return s.store.Search(ctx, embedding)
 }
 
+// ListMemories returns all memories for the tenant.
+func (s *MemoryService) ListMemories(ctx context.Context) ([]*repository.Memory, error) {
+	tenantID := contextutil.GetTenant(ctx)
+	if tenantID == "" {
+		return nil, fmt.Errorf("unauthorized: tenant_id missing from context")
+	}
+
+	return s.store.ListMemories(ctx, tenantID)
+}
+
 // GiveFeedback updates the confidence of a memory based on user/AI feedback.
 func (s *MemoryService) GiveFeedback(ctx context.Context, id string, confidence float64) error {
 	memory, err := s.store.Get(ctx, id)

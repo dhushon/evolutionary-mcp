@@ -22,13 +22,14 @@ tags:
     description: Workflow operations
   - name: grounding
     description: Grounding Rule operations
+  - name: memories
+    description: Evolutionary Memory operations
 
 paths:
   /health:
     get:
       tags: [health]
       summary: Health check
-      description: Returns overall service health status
       operationId: getHealth
       security: []
       responses:
@@ -49,7 +50,6 @@ paths:
     get:
       tags: [status]
       summary: Status check
-      description: Returns service status for authenticated users
       operationId: getStatus
       security:
         - openIdConnect: [openid, profile, email]
@@ -65,7 +65,6 @@ paths:
     get:
       tags: [tenants]
       summary: Get tenant branding
-      description: Returns the branding configuration for the current tenant
       operationId: getTenant
       security:
         - openIdConnect: [openid, profile, email]
@@ -81,7 +80,6 @@ paths:
     get:
       tags: [workflows]
       summary: List workflows
-      description: Returns a list of all active workflows for the tenant
       operationId: listWorkflows
       security:
         - openIdConnect: [evolve:read]
@@ -97,7 +95,6 @@ paths:
     put:
       tags: [workflows]
       summary: Create or update a workflow
-      description: Creates a new workflow concept or updates an existing latest version.
       operationId: putWorkflow
       security:
         - openIdConnect: [evolve:read, evolve:write]
@@ -119,7 +116,6 @@ paths:
     get:
       tags: [workflows]
       summary: Get workflow by ID
-      description: Returns a specific workflow version by its unique ID
       operationId: getWorkflow
       parameters:
         - name: id
@@ -137,14 +133,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Workflow'
-        '404':
-          description: Workflow not found
 
   /grounding:
     get:
       tags: [grounding]
       summary: List grounding rules
-      description: Returns all grounding rules for the tenant
       operationId: listGroundingRules
       security:
         - openIdConnect: [evolve:read]
@@ -160,7 +153,6 @@ paths:
     post:
       tags: [grounding]
       summary: Create grounding rule
-      description: Creates a new foundational truth or stability vector
       operationId: createGroundingRule
       security:
         - openIdConnect: [evolve:read, evolve:write]
@@ -238,6 +230,76 @@ paths:
         '204':
           description: Rule deleted
 
+  /memories:
+    get:
+      tags: [memories]
+      summary: List all memories
+      description: Returns a full list of semantic memories for the tenant
+      operationId: listMemories
+      security:
+        - openIdConnect: [evolve:read]
+      responses:
+        '200':
+          description: List of memories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Memory'
+
+  /memories/search:
+    post:
+      tags: [memories]
+      summary: Semantic memory search
+      description: Searches memories using a natural language query
+      operationId: searchMemories
+      security:
+        - openIdConnect: [evolve:read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Memory'
+
+  /memories/{id}/feedback:
+    post:
+      tags: [memories]
+      summary: Provide feedback on a memory
+      description: Updates memory confidence, triggering evolutionary versioning
+      operationId: giveMemoryFeedback
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - openIdConnect: [evolve:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryFeedback'
+      responses:
+        '200':
+          description: Feedback processed
+
 components:
   securitySchemes:
     openIdConnect:
@@ -259,16 +321,13 @@ components:
       properties:
         status:
           type: string
-          example: "ok"
         timestamp:
           type: string
           format: date-time
         service:
           type: string
-          example: "evolutionary-mcp"
         version:
           type: string
-          example: "1.0.0"
 
     Workflow:
       type: object
@@ -354,3 +413,35 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        confidence:
+          type: number
+        version:
+          type: integer
+        provenance:
+          type: object
+          additionalProperties: true
+        workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        tenant_id:
+          type: string
+          format: uuid
+
+    MemoryFeedback:
+      type: object
+      required: [confidence]
+      properties:
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1

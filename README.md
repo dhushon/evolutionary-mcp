@@ -129,10 +129,9 @@ ml-sidecar) with:
 docker-compose up --build -d
 ```
 
-- The Go backend will be available on port `8080` (or `8443` if TLS is
-  enabled).
+- The Go backend will be available on port `8080`.
 - The Python ML sidecar will be available on port `8001`.
-- The frontend runs on port `3000`.
+- The frontend runs on port `5173`.
 
 ### 4. Run the Frontend
 
@@ -144,7 +143,7 @@ npm install
 npm run dev
 ```
 
-The frontend dashboard will be available at `http://localhost:3000`.
+The frontend dashboard will be available at `http://localhost:5173`.
 
 ### 5. Verify Installation
 
@@ -167,6 +166,7 @@ The backend supports user authentication via Okta using a dual-client architectu
 
 2. **Update Configuration**
    - Add the Okta issuer URL and credentials to `config.yaml`.
+
      ```yaml
      auth:
        # full issuer URL, e.g. "https://dev-123456.okta.com/oauth2/default"
@@ -177,10 +177,11 @@ The backend supports user authentication via Okta using a dual-client architectu
        swagger_client_id: "FRONTEND_SPA_CLIENT_ID"
        redirect_url: "http://localhost:8080/auth/callback"
      ```
+
    - The backend will read and normalize these values on startup.
 
 3. **Using the Frontend**
-   - Navigate to the frontend UI (e.g. `http://localhost:3000`).
+   - Navigate to the frontend UI (e.g. `http://localhost:5173`).
    - Click the **Login with Okta** button. You will be redirected to Okta to sign in.
    - After successful authentication you’ll be returned to the dashboard with a session cookie set.
    - Use the **Logout** button to clear the session.
@@ -199,84 +200,15 @@ The backend supports user authentication via Okta using a dual-client architectu
    - Any requests to `/mcp/*` paths require an authenticated user. Unauthenticated requests will be redirected to `/login`.
    - You can test by hitting `http://localhost:8080/api/v1/health` with credentials included; a 200 response indicates a valid session.
 
-## 7. TLS Support
-
-The backend can run with HTTPS on port 8443 using certificates provided in the
-configuration. This is especially useful when embedding the service into a
-secure environment or using the Swagger UI’s OAuth flow over TLS.
-
-### Enable TLS
-
-1. Set the `tls.enable` field to `true` and provide paths for
-   `cert_file` and `key_file` in `config.yaml` or via environment variables.
-   You can also supply an array of `hostnames` which will be used when
-generating a self-signed certificate automatically.
-
-2. When `tls.enable` is true and the certificate/key files are missing,
-   the server will attempt to generate a self-signed certificate using the
-   `internal/tls` helper. By default it will write to the provided paths and
-   include any hostnames you list (e.g. `localhost`, `127.0.0.1`).
-
-3. The server will start on `https://localhost:8443`.  If you prefer to use
-   a custom port, set `Server.Addr` accordingly in the code or extend the
-   configuration.
-
-### Generating Self‑Signed Certs Manually
-
-You can also generate a certificate ahead of time using the library in a small
-Go program or a CLI tool. Example:
-
-```go
-package main
-
-import (
-    "log"
-    "evolutionary-mcp/backend/internal/tls"
-)
-
-func main() {
-    // include whichever hostnames you will use when accessing the service
-    if err := tls.GenerateSelfSignedCert("server.crt", "server.key", []string{"localhost", "127.0.0.1", "vdatacloud.com"}); err != nil {
-        log.Fatal(err)
-    }
-}
-```
-
-Build and run this program once; the files will be created in the current
-working directory.
-
-> **Tip:** if you own a real domain such as `vdatacloud.com`, point it at
-> `127.0.0.1` (for example by adding a `/etc/hosts` entry) so that browsers and
-tools resolve it locally but still present the same hostname to the TLS
-certificate.  You can then hit `https://vdatacloud.com:8443` in your browser
-and the certificate will already contain that name.
-
-Alternatively, you can use [`mkcert`](https://github.com/FiloSottile/mkcert)
-since it automates trust for development but the built‑in helper avoids any
-external dependencies.
-
-### Notes
-
-- The Swagger UI and login callbacks will also operate over HTTPS when TLS is
-  enabled.
-- Be aware that browsers will warn about self-signed certificates; add an
-  exception for development or install the cert into your trust store if
-  desired.
-
-> **Production tip:** since `vdatacloudai.com` is registered through Cloudflare,
-> you can leverage Cloudflare’s TLS/Edge certificates, CDN, and security
-> features when you flip the site to public.  Cloudflare will handle valid
-> certificates on your behalf and can also proxy requests back to your
-> containerized backend running on Cloud Run or elsewhere.
-
-## 8. Active Development Tasks (Context for Next Session)
+## 7. Active Development Tasks (Context for Next Session)
 
 **Current Status:**
+
 - **Auth**: Dual-client architecture (Backend Confidential + SPA Public) is fully configured and documented. Scopes are centralized in `backend/internal/auth/scopes.go`.
 - **Config**: Setup utility (`make setup-env`) is working and generates `.env` files.
 - **Frontend**: Vite proxy is configured in `frontend/vite.config.ts` to forward `/api`, `/login`, and `/logout` to the backend.
 
 **Next Steps:**
-1.  **Workflows API**: Create DB migration for `workflows` table and implement `listWorkflows` handler logic in Go.
-2.  **TLS Verification**: Test `tls.enable: true` locally and ensure Vite proxy handles self-signed certs correctly (may need `secure: false` in proxy config).
-3.  **Frontend Data**: Wire up React components to fetch from `/api/v1/workflows`.
+
+1. **Workflows API**: Create DB migration for `workflows` table and implement `listWorkflows` handler logic in Go.
+2. **Frontend Data**: Wire up React components to fetch from `/api/v1/workflows`.

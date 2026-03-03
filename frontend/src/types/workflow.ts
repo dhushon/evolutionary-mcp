@@ -44,6 +44,20 @@ export interface GroundingRule {
   updated_at: string;
 }
 
+export interface Memory {
+  id: string;
+  content: string;
+  confidence: number;
+  version: number;
+  provenance: Record<string, any>;
+  workflow_id?: string;
+  tenant_id: string;
+}
+
+export interface MemoryFeedback {
+  confidence: number;
+}
+
 export interface HealthStatus {
   service: string;
   status: string;

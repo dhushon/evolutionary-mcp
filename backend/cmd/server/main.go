@@ -24,7 +24,6 @@ import (
 	"evolutionary-mcp/backend/internal/mcp"
 	"evolutionary-mcp/backend/internal/repository"
 	"evolutionary-mcp/backend/internal/services"
-	"evolutionary-mcp/backend/internal/tls"
 )
 
 func main() {
@@ -102,6 +101,19 @@ func main() {
 	// Create a group for /api/v1 to match OpenAPI spec and apply auth middleware
 	apiGroup := e.Group("/api/v1")
 	apiGroup.Use(echo.WrapMiddleware(authz.RequireAuth))
+
+	// Bridge standard context to Echo context for tenant_id. This ensures that
+	// handlers looking in c.Get("tenant_id") can find the value injected by
+	// the wrapped RequireAuth middleware.
+	apiGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if tid := c.Request().Context().Value("tenant_id"); tid != nil {
+				c.Set("tenant_id", tid)
+			}
+			return next(c)
+		}
+	})
+
 	apiServer := api.NewServer(memoryStore)
 	api.RegisterHandlers(apiGroup, apiServer)
 
@@ -122,10 +134,6 @@ func main() {
 
 	// Create HTTP server
 	addr := ":8080"
-	if cfg.TLS.Enable {
-		// use TLS port 8443
-		addr = ":8443"
-	}
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      e,
@@ -137,27 +145,8 @@ func main() {
 	// Graceful shutdown handling
 	serverErrors := make(chan error, 1)
 	go func() {
-		logger.Info("Server starting", "address", addr, "tls", cfg.TLS.Enable)
-		if cfg.TLS.Enable {
-			// ensure certificate exists if requested
-			if cfg.TLS.CertFile == "" || cfg.TLS.KeyFile == "" {
-				logger.Error("TLS enabled but cert/key file not provided")
-				httpErr := server.ListenAndServe()
-				serverErrors <- httpErr
-				return
-			}
-			// generate if missing and hostnames provided
-			if _, err := os.Stat(cfg.TLS.CertFile); os.IsNotExist(err) {
-				if len(cfg.TLS.Hostnames) > 0 {
-					if err := tls.GenerateSelfSignedCert(cfg.TLS.CertFile, cfg.TLS.KeyFile, cfg.TLS.Hostnames); err != nil {
-						logger.Error("failed to generate self-signed cert", "error", err)
-					}
-				}
-			}
-			serverErrors <- server.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-		} else {
-			serverErrors <- server.ListenAndServe()
-		}
+		logger.Info("Server starting", "address", addr)
+		serverErrors <- server.ListenAndServe()
 	}()
 
 	select {

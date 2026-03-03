@@ -106,7 +106,7 @@ For local development, we use `docker-compose` to replicate the cloud environmen
 
 - `backend`: Port 8080
 - `ml-sidecar`: Port 8001
-- `frontend`: Port 3000
+- `frontend`: Port 5173
 - `postgres`: Port 5432
 - `redis`: Port 6379
 

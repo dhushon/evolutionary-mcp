@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -10,7 +11,7 @@ import (
 type Config struct {
 	Environment   string `mapstructure:"environment"`
 	DevModeBypass bool   `mapstructure:"dev_mode_bypass"`
-	DB struct {
+	DB            struct {
 		Host     string `mapstructure:"host"`
 		Port     int    `mapstructure:"port"`
 		User     string `mapstructure:"user"`
@@ -27,13 +28,7 @@ type Config struct {
 		ClientSecret    string `mapstructure:"client_secret"`
 		SwaggerClientID string `mapstructure:"swagger_client_id"`
 		RedirectURL     string `mapstructure:"redirect_url"`
-	} `mapstructure:"auth"`
-	TLS struct {
-		Enable    bool     `mapstructure:"enable"`
-		CertFile  string   `mapstructure:"cert_file"`
-		KeyFile   string   `mapstructure:"key_file"`
-		Hostnames []string `mapstructure:"hostnames"`
-	} `mapstructure:"tls"`
+	}
 }
 
 // LoadConfig loads the configuration from a file and the environment.
@@ -68,12 +63,22 @@ func LoadConfig(envPath string) (*Config, error) {
 		return nil, err
 	}
 
+	// ---> START DEBUGGING
+	fmt.Printf("[DEBUG] Viper 'ENVIRONMENT': %s\n", viper.GetString("ENVIRONMENT"))
+	fmt.Printf("[DEBUG] Viper 'DEV_MODE_BYPASS': %v\n", viper.GetBool("DEV_MODE_BYPASS"))
+	// ---> END DEBUGGING
+
 	if env := viper.GetString("ENVIRONMENT"); env != "" {
 		config.Environment = env
 	}
 	if bypass := viper.GetBool("DEV_MODE_BYPASS"); bypass {
 		config.DevModeBypass = bypass
 	}
+
+	// ---> START DEBUGGING
+	fmt.Printf("[DEBUG] Config struct 'Environment': %s\n", config.Environment)
+	fmt.Printf("[DEBUG] Config struct 'DevModeBypass': %v\n", config.DevModeBypass)
+	// ---> END DEBUGGING
 
 	// env overrides (especially useful in containerized environments)
 	if h := viper.GetString("DB_HOST"); h != "" {

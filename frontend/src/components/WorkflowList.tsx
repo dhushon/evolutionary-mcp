@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getWorkflows } from '../api';
+import { DataCard } from './layout/DataCard';
 
 export default function WorkflowList() {
     const { data: workflows, isLoading, isError, error } = useQuery({
@@ -21,23 +22,18 @@ export default function WorkflowList() {
             
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {workflows?.map((wf) => (
-                    <div key={wf.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start mb-3">
-                            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{wf.name}</h2>
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                wf.status === 'active' 
-                                    ? 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300' 
-                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
-                            }`}>
-                                {wf.status}
-                            </span>
-                        </div>
-                        <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-2">{wf.description}</p>
-                        <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
-                            <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">v{wf.version}</span>
-                            <span>{new Date(wf.updated_at).toLocaleDateString()}</span>
-                        </div>
-                    </div>
+                    <DataCard
+                        key={wf.id}
+                        title={wf.name}
+                        subtitle={`v${wf.version} • ${wf.status}`}
+                        content={wf.description}
+                        footer={
+                            <div className="flex justify-between items-center text-xs text-slate-500">
+                                <span>Updated {new Date(wf.updated_at).toLocaleDateString()}</span>
+                                <button className="text-blue-600 hover:text-blue-700 font-medium">View Details</button>
+                            </div>
+                        }
+                    />
                 ))}
             </div>
         </div>

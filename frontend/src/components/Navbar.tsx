@@ -14,12 +14,15 @@ const Navbar: React.FC = () => {
         </div>
         <div className="flex-1 max-w-md mx-8">
           <div className="relative">
+            <label htmlFor="global-search" className="sr-only">Search</label>
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </span>
             <input 
+              id="global-search"
+              name="global-search"
               type="search" 
               placeholder="Search workflows, memories..." 
               className="w-full bg-gray-100 dark:bg-gray-700 border-none rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary transition-all" 

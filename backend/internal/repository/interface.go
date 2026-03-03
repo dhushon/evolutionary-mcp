@@ -7,15 +7,15 @@ import (
 
 // Memory represents a single memory entry.
 type Memory struct {
-	ID         string
-	Content    string
-	Embedding  []float32
-	Confidence float64
-	Version    int
+	ID         string                 `json:"id"`
+	Content    string                 `json:"content"`
+	Embedding  []float32              `json:"-"`
+	Confidence float64                `json:"confidence"`
+	Version    int                    `json:"version"`
 	// Provenance tracks the system state (model ver, rag ver) and user context (session)
-	Provenance map[string]interface{}
-	WorkflowID string // Links to the specific version of the workflow definition
-	TenantID   string // Multi-tenancy isolation
+	Provenance map[string]interface{} `json:"provenance"`
+	WorkflowID string                 `json:"workflow_id"` // Links to the specific version of the workflow definition
+	TenantID   string                 `json:"tenant_id"`   // Multi-tenancy isolation
 }
 
 // Repository is an interface for all data access operations.
@@ -26,6 +26,8 @@ type Repository interface {
 	Get(ctx context.Context, id string) (*Memory, error)
 	// Search searches for memories based on a query.
 	Search(ctx context.Context, embedding []float32) ([]*Memory, error)
+	// ListMemories lists all memories for a tenant.
+	ListMemories(ctx context.Context, tenantID string) ([]*Memory, error)
 	// Update updates an existing memory.
 	Update(ctx context.Context, memory *Memory) error
 	// Ping checks the connection to the storage backend.

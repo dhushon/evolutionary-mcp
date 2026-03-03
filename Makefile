@@ -12,15 +12,17 @@ run: db migrate
 	until docker-compose exec -T postgres pg_isready -U user > /dev/null 2>&1; do \
 		echo "waiting for postgres..." >&2; sleep 1; \
 	done
+	@echo "waiting for ml-sidecar to initialize..."
+	@sleep 2
 	cd backend && go run ./cmd/server
 
 # start only the database (and optionally redis) services
-# other services (frontend, ml-sidecar) are optional and may be started
+# other services (frontend) are optional and may be started
 # independently via docker-compose.
 db:
-	@echo "starting postgres (and redis) containers..."
-	@if ! docker-compose up -d postgres; then \
-		echo "\nERROR: Docker compose could not start the postgres container."; \
+	@echo "starting infrastructure containers (postgres, redis, ml-sidecar)..."
+	@if ! docker-compose up -d postgres ml-sidecar; then \
+		echo "\nERROR: Docker compose could not start the required containers (postgres/ml-sidecar)."; \
 		echo "Please ensure your Docker daemon is running and can pull images."; \
 		echo "You can also start a local Postgres manually or set DB connection via env vars."; \
 		exit 1; \

@@ -81,8 +81,9 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({
     <form className="space-y-6 bg-bg-surface p-6 rounded-xl border border-border-base shadow-sm">
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-text-base mb-1">Name</label>
+          <label htmlFor="wf-name" className="block text-sm font-medium text-text-base mb-1">Name</label>
           <input
+            id="wf-name"
             type="text"
             name="name"
             value={formData.name || ''}
@@ -94,8 +95,9 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-text-base mb-1">Description</label>
+          <label htmlFor="wf-description" className="block text-sm font-medium text-text-base mb-1">Description</label>
           <textarea
+            id="wf-description"
             name="description"
             value={formData.description || ''}
             onChange={handleChange}
@@ -107,8 +109,9 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-text-base mb-1">Type</label>
+            <label htmlFor="wf-element-type" className="block text-sm font-medium text-text-base mb-1">Type</label>
             <select
+              id="wf-element-type"
               name="element_type"
               value={formData.element_type || 'workflow'}
               onChange={handleChange}
@@ -120,8 +123,9 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-base mb-1">Status</label>
+            <label htmlFor="wf-status" className="block text-sm font-medium text-text-base mb-1">Status</label>
             <select
+              id="wf-status"
               name="status"
               value={formData.status || 'draft'}
               onChange={handleChange}
@@ -135,8 +139,10 @@ const WorkflowForm: React.FC<WorkflowFormProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-text-base mb-1">Input Schema (JSON)</label>
+          <label htmlFor="wf-input-schema" className="block text-sm font-medium text-text-base mb-1">Input Schema (JSON)</label>
           <textarea
+            id="wf-input-schema"
+            name="input_schema"
             value={typeof formData.input_schema === 'object' ? JSON.stringify(formData.input_schema, null, 2) : formData.input_schema || '{}'}
             onChange={(e) => handleJsonChange('input_schema', e.target.value)}
             rows={5}

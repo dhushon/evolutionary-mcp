@@ -138,6 +138,33 @@ func (s *PostgresMemoryStore) Search(ctx context.Context, embedding []float32) (
 	return memories, nil
 }
 
+// ListMemories lists all memories for a tenant.
+func (s *PostgresMemoryStore) ListMemories(ctx context.Context, tenantID string) ([]*Memory, error) {
+	s.logger.Debug("Listing all memories", "tenant_id", tenantID)
+
+	rows, err := s.db.Query(ctx, "SELECT id, tenant_id, content, embedding, confidence, version, provenance, workflow_id FROM memories WHERE tenant_id = $1 ORDER BY version DESC, id", tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var memories []*Memory
+	for rows.Next() {
+		var memory Memory
+		var workflowID *string
+		err := rows.Scan(&memory.ID, &memory.TenantID, &memory.Content, &memory.Embedding, &memory.Confidence, &memory.Version, &memory.Provenance, &workflowID)
+		if err != nil {
+			return nil, err
+		}
+		if workflowID != nil {
+			memory.WorkflowID = *workflowID
+		}
+		memories = append(memories, &memory)
+	}
+
+	return memories, nil
+}
+
 // Update updates an existing memory.
 func (s *PostgresMemoryStore) Update(ctx context.Context, memory *Memory) error {
 	s.logger.Debug("Updating memory", "id", memory.ID, "new_version", memory.Version)

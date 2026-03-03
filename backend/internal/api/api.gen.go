@@ -51,6 +51,22 @@ type HealthStatus struct {
 	Version   *string    `json:"version,omitempty"`
 }
 
+// Memory defines model for Memory.
+type Memory struct {
+	Confidence *float32                `json:"confidence,omitempty"`
+	Content    *string                 `json:"content,omitempty"`
+	Id         *openapi_types.UUID     `json:"id,omitempty"`
+	Provenance *map[string]interface{} `json:"provenance,omitempty"`
+	TenantId   *openapi_types.UUID     `json:"tenant_id,omitempty"`
+	Version    *int                    `json:"version,omitempty"`
+	WorkflowId *openapi_types.UUID     `json:"workflow_id"`
+}
+
+// MemoryFeedback defines model for MemoryFeedback.
+type MemoryFeedback struct {
+	Confidence float32 `json:"confidence"`
+}
+
 // Tenant defines model for Tenant.
 type Tenant struct {
 	BrandTitle *string             `json:"brand_title,omitempty"`
@@ -85,11 +101,22 @@ type WorkflowElementType string
 // WorkflowStatus defines model for Workflow.Status.
 type WorkflowStatus string
 
+// SearchMemoriesJSONBody defines parameters for SearchMemories.
+type SearchMemoriesJSONBody struct {
+	Query *string `json:"query,omitempty"`
+}
+
 // CreateGroundingRuleJSONRequestBody defines body for CreateGroundingRule for application/json ContentType.
 type CreateGroundingRuleJSONRequestBody = GroundingRule
 
 // UpdateGroundingRuleJSONRequestBody defines body for UpdateGroundingRule for application/json ContentType.
 type UpdateGroundingRuleJSONRequestBody = GroundingRule
+
+// SearchMemoriesJSONRequestBody defines body for SearchMemories for application/json ContentType.
+type SearchMemoriesJSONRequestBody SearchMemoriesJSONBody
+
+// GiveMemoryFeedbackJSONRequestBody defines body for GiveMemoryFeedback for application/json ContentType.
+type GiveMemoryFeedbackJSONRequestBody = MemoryFeedback
 
 // PutWorkflowJSONRequestBody defines body for PutWorkflow for application/json ContentType.
 type PutWorkflowJSONRequestBody = Workflow
@@ -114,6 +141,15 @@ type ServerInterface interface {
 	// Health check
 	// (GET /health)
 	GetHealth(ctx echo.Context) error
+	// List all memories
+	// (GET /memories)
+	ListMemories(ctx echo.Context) error
+	// Semantic memory search
+	// (POST /memories/search)
+	SearchMemories(ctx echo.Context) error
+	// Provide feedback on a memory
+	// (POST /memories/{id}/feedback)
+	GiveMemoryFeedback(ctx echo.Context, id openapi_types.UUID) error
 	// Status check
 	// (GET /status)
 	GetStatus(ctx echo.Context) error
@@ -221,6 +257,46 @@ func (w *ServerInterfaceWrapper) GetHealth(ctx echo.Context) error {
 	return err
 }
 
+// ListMemories converts echo context to params.
+func (w *ServerInterfaceWrapper) ListMemories(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListMemories(ctx)
+	return err
+}
+
+// SearchMemories converts echo context to params.
+func (w *ServerInterfaceWrapper) SearchMemories(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:read"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SearchMemories(ctx)
+	return err
+}
+
+// GiveMemoryFeedback converts echo context to params.
+func (w *ServerInterfaceWrapper) GiveMemoryFeedback(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, ctx.Param("id"), &id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(OpenIdConnectScopes, []string{"evolve:write"})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GiveMemoryFeedback(ctx, id)
+	return err
+}
+
 // GetStatus converts echo context to params.
 func (w *ServerInterfaceWrapper) GetStatus(ctx echo.Context) error {
 	var err error
@@ -317,6 +393,9 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/grounding/:id", wrapper.GetGroundingRule)
 	router.PUT(baseURL+"/grounding/:id", wrapper.UpdateGroundingRule)
 	router.GET(baseURL+"/health", wrapper.GetHealth)
+	router.GET(baseURL+"/memories", wrapper.ListMemories)
+	router.POST(baseURL+"/memories/search", wrapper.SearchMemories)
+	router.POST(baseURL+"/memories/:id/feedback", wrapper.GiveMemoryFeedback)
 	router.GET(baseURL+"/status", wrapper.GetStatus)
 	router.GET(baseURL+"/tenant", wrapper.GetTenant)
 	router.GET(baseURL+"/workflows", wrapper.ListWorkflows)

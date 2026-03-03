@@ -83,6 +83,10 @@ func (m *MockMemoryStore) SearchGroundingRules(ctx context.Context, tenantID str
 	return nil, nil
 }
 
+func (m *MockMemoryStore) ListMemories(ctx context.Context, tenantID string) ([]*repository.Memory, error) {
+	return nil, nil
+}
+
 // MockMLClient satisfies MLClient interface
 type MockMLClient struct {
 	mock.Mock

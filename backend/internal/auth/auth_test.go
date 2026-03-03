@@ -107,6 +107,10 @@ func (m *MockRepository) SearchGroundingRules(ctx context.Context, tenantID stri
 	return nil, nil
 }
 
+func (m *MockRepository) ListMemories(ctx context.Context, tenantID string) ([]*repository.Memory, error) {
+	return nil, nil
+}
+
 func TestRequireAuth_BearerToken_ExtractsTenant(t *testing.T) {
 	mockRepo := new(MockRepository)
 	expectedTenant := &models.Tenant{

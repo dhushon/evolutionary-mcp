@@ -5,22 +5,56 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 15 23 42;
+    --primary: 59 130 246;
+    --primary-hover: 37 99 235;
+    --bg-base: 248 250 252;
+    --bg-surface: 255 255 255;
+    --bg-accent: 241 245 249;
+    --border-base: 226 232 240;
+    --text-base: 15 23 42;
+    --text-muted: 100 116 139;
+  }
+
+  .dark {
+    --background: 15 23 42;
+    --foreground: 241 245 249;
+    --bg-base: 15 23 42;
+    --bg-surface: 30 41 59;
+    --bg-accent: 51 65 85;
+    --border-base: 51 65 85;
+    --text-base: 241 245 249;
+    --text-muted: 148 163 184;
+  }
+
+  html, body, #root {
+    @apply h-full w-full overflow-hidden;
+  }
+
   body {
-    @apply bg-[var(--color-bg-base)] text-[var(--color-text-base)] transition-colors duration-300;
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    transition-duration: 200ms;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-:root {
-  --color-primary: #2563eb; /* blue-600 */
-  --color-secondary: #4f46e5; /* indigo-600 */
+@layer components {
+  .layout-container {
+    @apply max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8;
+  }
 }
 
-.dark {
-  --color-primary: #3b82f6; /* blue-500 */
-  --color-secondary: #6366f1; /* indigo-500 */
-}
-
-body {
-  @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
-  transition: background-color 0.3s, color 0.3s;
+@layer utilities {
+  .bg-bg-base { background-color: rgb(var(--bg-base)); }
+  .bg-bg-surface { background-color: rgb(var(--bg-surface)); }
+  .bg-bg-accent { background-color: rgb(var(--bg-accent)); }
+  .text-text-base { color: rgb(var(--text-base)); }
+  .text-text-muted { color: rgb(var(--text-muted)); }
+  .border-border-base { border-color: rgb(var(--border-base)); }
+  .bg-primary-hover { background-color: rgb(var(--primary-hover)); }
 }
