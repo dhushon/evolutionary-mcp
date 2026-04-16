@@ -1,6 +1,6 @@
 module evolutionary-mcp/backend
 
-go 1.25
+go 1.25.0
 
 replace evolutionary-mcp/backend/platform-commons => ./platform-commons
 
@@ -25,7 +25,7 @@ replace evolutionary-mcp/backend/platform-commons/integrations/aws-messaging => 
 require (
 	github.com/coreos/go-oidc v2.5.0+incompatible
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/mark3labs/mcp-go v0.44.0
 	github.com/oapi-codegen/runtime v1.2.0
